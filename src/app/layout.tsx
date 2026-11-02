@@ -17,6 +17,9 @@ const poppins = Poppins({
 export const metadata: Metadata = {
   title: "FT-World",
   description: "FT-World",
+  icons: {
+    icon: "/icons/metaicon.png",
+  },
 };
 
 export default function RootLayout({
