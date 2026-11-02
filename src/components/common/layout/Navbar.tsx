@@ -8,6 +8,7 @@ import { cn } from "@/src/lib/utils";
 import NavSearchBar from "../NavSearchBar";
 import LOGO_SRC from "../../../../public/images/logo.png"
 import { useState } from "react";
+import CartDrawer from "../CartDrawer";
 
 
 export interface NavChild {
@@ -60,6 +61,7 @@ const linkText =
 
 const Navbar = ({ onSearch, className }: NavbarProps) => {
   const [open, setOpen] = useState(false);
+  const [cartOpen, setCartOpen] = useState(false);
   const closeMenu = () => setOpen(false);
 
   return (
@@ -172,13 +174,15 @@ const Navbar = ({ onSearch, className }: NavbarProps) => {
             >
               <User aria-hidden="true" className="size-[22px]" />
             </Link>
-            <Link
-              href={CART_HREF}
-              aria-label="Cart"
-              className="rounded-full text-black transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-            >
-              <ShoppingCart aria-hidden="true" className="size-[22px]" />
-            </Link>
+            <button
+  type="button"
+  aria-label="Cart"
+  aria-haspopup="dialog"
+  onClick={() => { closeMenu(); setCartOpen(true); }}
+  className="rounded-full text-black transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+>
+  <ShoppingCart aria-hidden="true" className="size-[22px]" />
+</button>
           </div>
 
           <button
@@ -246,6 +250,7 @@ const Navbar = ({ onSearch, className }: NavbarProps) => {
           </ul>
         </div>
       )}
+      <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} /> 
     </header>
   );
 };
