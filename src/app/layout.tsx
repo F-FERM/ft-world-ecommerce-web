@@ -3,6 +3,8 @@ import { Poppins } from "next/font/google";
 import { Toaster } from "sonner";
 import "./globals.css";
 import Providers from "./providers";
+import Navbar from "../components/common/layout/Navbar";
+import Footer from "../components/common/layout/Footer";
 
 
 const poppins = Poppins({
@@ -26,7 +28,9 @@ export default function RootLayout({
     <html lang="en" className={poppins.variable}>
       <body className="antialiased font-sans">
         <Providers>
+          <Navbar/>
           {children} <Toaster richColors />
+          <Footer/>
         </Providers>
       </body>
     </html>

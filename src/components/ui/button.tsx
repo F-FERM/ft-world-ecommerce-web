@@ -17,13 +17,13 @@ const buttonVariants = cva(
         destructive:
           "bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
         link: "text-primary underline-offset-4 hover:underline",
-          shopNow: [
+   shopNow: [
   "font-poppins font-semibold capitalize text-white",
-  "bg-[#6E2D6B] rounded-[12px] sm:rounded-[16px] lg:rounded-[20px]",
-  "w-full max-w-[227px] h-[44px] sm:h-[52px] lg:h-[60px]",
-  "px-6 sm:px-10 lg:px-[52px] pt-[9px] pb-[10px] lg:pt-[13px] lg:pb-[14px]",
+  "bg-[#6E2D6B] rounded-[14px] sm:rounded-[16px] lg:rounded-[20px]",
+  "w-[190px] sm:w-[210px] lg:w-[227px] h-[52px] sm:h-[56px] lg:h-[60px]",
+  "px-6 sm:px-10 lg:px-[52px] py-0 justify-center whitespace-nowrap",
   "gap-[10px]",
-  "text-[16px] sm:text-[19px] lg:text-[22px] leading-[100%] tracking-[0.07em]",
+  "text-[18px] sm:text-[20px] lg:text-[22px] leading-[100%] tracking-[0.07em]",
   "hover:bg-[#A823A2] focus-visible:ring-2 focus-visible:ring-[#F24DEB]/40",
   "[&_svg:not([class*='size-'])]:size-[15px]",
 ],
@@ -80,6 +80,7 @@ subscribe: [
       },
       
       size: {
+        none:"",
         default:
           "h-8 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
         xs: "h-6 gap-1 rounded-[min(var(--radius-md),10px)] px-2 text-xs in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3",
@@ -103,16 +104,17 @@ subscribe: [
 function Button({
   className,
   variant = "default",
-  size = "default",
+  size,
   ...props
 }: ButtonPrimitive.Props & VariantProps<typeof buttonVariants>) {
+  const resolvedSize = size ?? (variant === "default" ? "default" : "none");
   return (
     <ButtonPrimitive
       data-slot="button"
-      className={cn(buttonVariants({ variant, size, className }))}
+      className={cn(buttonVariants({ variant, size: resolvedSize, className }))}
       {...props}
     />
-  )
+  );
 }
 
 export { Button, buttonVariants }
