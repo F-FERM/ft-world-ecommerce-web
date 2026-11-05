@@ -28,7 +28,10 @@ interface ProductCardProps {
 const formatPrice = (value: number) => `AED. ${value.toFixed(2)}`;
 
 const ProductCard = ({ product, onAddToCart, className }: ProductCardProps) => {
-  const { title, compatibleFor, models, price, oldPrice, image, imageAlt, href } = product;
+  const { id, title, compatibleFor, models, price, oldPrice, image, imageAlt } = product;
+
+  // Every product opens its own detail page: /products/p1, /products/p2 ...
+  const href = product.href ?? `/product/${id}`;
 
   const discount =
     product.discount ??
@@ -43,12 +46,12 @@ const ProductCard = ({ product, onAddToCart, className }: ProductCardProps) => {
         className
       )}
     >
-      {/* Discount badge: Figma 154 x 45, radius 20, bg #6E2D6BCC, border #FF78F9 */}
+      {/* Discount badge */}
       {discount > 0 && (
         <span
           className={cn(
-            "absolute left-4 top-4 z-10 rounded-[16px] border border-[#FF78F9] bg-[#6E2D6B]/80 text-white sm:left-5 sm:top-5 2xl:left-[27px] 2xl:top-[29px] 2xl:rounded-[20px]",
-            "px-3 py-1.5  text-[12px] font-medium leading-[100%] sm:px-4 sm:text-[14px] 2xl:px-5 2xl:py-2 2xl:text-[16px]"
+            "pointer-events-none absolute left-4 top-4 z-10 rounded-[16px] border border-[#FF78F9] bg-[#6E2D6B]/80 text-white sm:left-5 sm:top-5 2xl:left-[27px] 2xl:top-[29px] 2xl:rounded-[20px]",
+            "px-3 py-1.5 text-[12px] font-medium leading-[100%] sm:px-4 sm:text-[14px] 2xl:px-5 2xl:py-2 2xl:text-[16px]"
           )}
         >
           Discount {discount}%
@@ -67,20 +70,21 @@ const ProductCard = ({ product, onAddToCart, className }: ProductCardProps) => {
       </div>
 
       {/* Details */}
-      <div className=" flex flex-1 flex-col">
+      <div className="flex flex-1 flex-col">
         <h3
           className={cn(
-            " font-semibold capitalize leading-[100%] tracking-[0%] text-black",
+            "font-semibold capitalize leading-[100%] tracking-[0%] text-black",
             "text-[18px] sm:text-[20px] 2xl:text-[22px]"
           )}
         >
-          {href ? (
-            <Link href={href} className="hover:underline focus-visible:underline focus-visible:outline-none">
-              {title}
-            </Link>
-          ) : (
-            title
-          )}
+          {/* The after: pseudo-element stretches this link over the whole card (article is `relative`),
+              so clicking anywhere on the card navigates. */}
+          <Link
+            href={href}
+            className="after:absolute after:inset-0 after:content-[''] hover:underline focus-visible:underline focus-visible:outline-none"
+          >
+            {title}
+          </Link>
         </h3>
 
         <p
@@ -94,7 +98,7 @@ const ProductCard = ({ product, onAddToCart, className }: ProductCardProps) => {
 
         <p
           className={cn(
-            "  font-normal capitalize leading-[120%] tracking-[0%] text-[#525252]",
+            "font-normal capitalize leading-[120%] tracking-[0%] text-[#525252]",
             "text-[13px] sm:text-[14px] 2xl:text-[16px]"
           )}
         >
@@ -102,10 +106,10 @@ const ProductCard = ({ product, onAddToCart, className }: ProductCardProps) => {
         </p>
 
         {/* Prices */}
-        <div className=" flex flex-wrap items-baseline gap-x-3 gap-y-1 mb-2">
+        <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <span
             className={cn(
-              " font-semibold capitalize leading-[100%] tracking-[0%] text-black",
+              "font-semibold capitalize leading-[100%] tracking-[0%] text-black",
               "text-[18px] sm:text-[20px] 2xl:text-[24px]"
             )}
           >
@@ -114,7 +118,7 @@ const ProductCard = ({ product, onAddToCart, className }: ProductCardProps) => {
           {oldPrice && (
             <span
               className={cn(
-                " font-normal capitalize leading-[100%] tracking-[0%] text-[#464646] line-through",
+                "font-normal capitalize leading-[100%] tracking-[0%] text-[#464646] line-through",
                 "text-[14px] sm:text-[16px] 2xl:text-[20px]"
               )}
             >
@@ -123,12 +127,13 @@ const ProductCard = ({ product, onAddToCart, className }: ProductCardProps) => {
           )}
         </div>
 
+        {/* relative z-10 keeps the button above the stretched link, so "Add to cart" does NOT navigate */}
         <Button
           type="button"
           variant="addToCart"
           size="none"
           onClick={() => onAddToCart?.(product)}
-          className="mt-auto"
+          className="relative z-10 mt-auto"
         >
           Add to cart
         </Button>
