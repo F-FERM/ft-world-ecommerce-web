@@ -136,7 +136,7 @@ const BuildBundle = ({ className, items = BUNDLE_ITEMS }: BuildBundleProps) => {
                         <h3
                           className={cn(
                             "font-[Poppins] font-normal capitalize leading-[1.2] tracking-[0%] text-black",
-                            "text-[14px] sm:text-[16px] 2xl:text-[19px] 2xl:leading-[100%]"
+                            "text-[14px] sm:text-[16px] 2xl:text-[19px] 2xl:leading-[150%]"
                           )}
                         >
                           {item.title}
