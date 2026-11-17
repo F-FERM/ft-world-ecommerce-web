@@ -1,31 +1,54 @@
 "use client";
 
 import Image, { type StaticImageData } from "next/image";
-import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   BadgePercent,
   ChevronDown,
   ChevronUp,
   ClipboardList,
+  Edit2,
+  MapPin,
   Package,
   Plus,
+  Trash2,
   X,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { cn } from "@/src/lib/utils";
-import { CartLine, CartProduct, getErrorMessage, useAddToCart, useCart, useClearCart, useRemoveCartItem, useUpdateCartItem } from "@/src/api/useCart";
-
+import {
+  CartLine,
+  CartProduct,
+  getErrorMessage,
+  isCustomerLoggedIn,
+  useAddToCart,
+  useCart,
+  useClearCart,
+  useRemoveCartItem,
+  useUpdateCartItem,
+} from "@/src/api/useCart";
+import {
+  type Address,
+  type AddressPayload,
+  useAddresses,
+  useCreateAddress,
+  useDeleteAddress,
+  useUpdateAddress,
+} from "@/src/api/address";
+import { usePlaceOrder, type PaymentMethod } from "@/src/api/orders";
 
 /* ---------------------------------- Types --------------------------------- */
 
-
-
-export interface ShippingEstimate {
-  country: string;
-  postalCode: string;
-}
-
 type Tab = "cart" | "recent";
-type Panel = "note" | "shipping" | "discount" | null;
+type Panel = "note" | "shipping" | "discount" | "order" | null;
+type ShippingView = "list" | "form";
 
 export interface CartDrawerProps {
   open: boolean;
@@ -33,13 +56,10 @@ export interface CartDrawerProps {
   recentlyViewed?: CartProduct[];
   /** Cart subtotal needed to unlock free shipping */
   freeShippingThreshold?: number;
-  countries?: string[];
   /** Called after a recently viewed product is added to the cart */
   onAddRecent?: (product: CartProduct) => void;
   onApplyNote?: (note: string) => void;
-  onApplyShipping?: (estimate: ShippingEstimate) => void;
   onApplyDiscount?: (code: string) => void;
-  onBuyNow?: () => void;
   className?: string;
 }
 
@@ -48,19 +68,9 @@ export interface CartDrawerProps {
 const EMPTY_LINES: CartLine[] = [];
 const EMPTY_RECENT: CartProduct[] = [];
 
-const DEFAULT_COUNTRIES = [
-  "United Arab Emirates",
-  "Saudi Arabia",
-  "Oman",
-  "Qatar",
-  "Kuwait",
-  "Bahrain",
-  "India",
-];
-
 /* --------------------------------- Helpers -------------------------------- */
 
-const CURRENCY = "AED."; // change to "₹" etc. if needed
+const CURRENCY = "AED.";
 const BRAND = "bg-[#55244F] hover:bg-[#6B2D63]";
 const formatPrice = (n: number) => `${CURRENCY} ${n.toFixed(2)}`;
 
@@ -73,9 +83,30 @@ const fieldClass = cn(
   "focus-visible:border-[#55244F] focus-visible:outline-none"
 );
 
+const inputH = "h-[46px] sm:h-[50px] 2xl:h-[56px]";
+
+const BLANK_FORM: AddressPayload = {
+  fullName: "",
+  phone: "",
+  street: "",
+  addressLine1: "",
+  addressLine2: "",
+  city: "",
+  state: "",
+  country: "",
+  postalCode: "",
+  isDefault: false,
+};
+
 /* ---------------------------- Small sub-components ------------------------- */
 
-const ProductImage = ({ src, alt }: { src: StaticImageData | string; alt: string }) => (
+const ProductImage = ({
+  src,
+  alt,
+}: {
+  src: StaticImageData | string;
+  alt: string;
+}) => (
   <div className="relative h-[56px] w-[84px] shrink-0 overflow-hidden rounded-[8px] border border-[#55244F] bg-white sm:h-[64px] sm:w-[96px] 2xl:h-[72px] 2xl:w-[110px]">
     <Image src={src} alt={alt} fill sizes="110px" className="object-contain p-1" />
   </div>
@@ -121,7 +152,10 @@ const QuantityStepper = ({
     aria-label={`Quantity for ${label}`}
     className="flex h-[36px] w-[68px] items-center justify-center gap-2 rounded-full border border-[#D5D5D5] bg-white sm:h-[40px] sm:w-[76px] 2xl:h-[44px] 2xl:w-[84px]"
   >
-    <span aria-live="polite" className="text-[16px] font-medium leading-none text-black 2xl:text-[18px]">
+    <span
+      aria-live="polite"
+      className="text-[16px] font-medium leading-none text-black 2xl:text-[18px]"
+    >
       {value}
     </span>
     <div className="flex flex-col">
@@ -147,14 +181,24 @@ const QuantityStepper = ({
   </div>
 );
 
-const ApplyButton = ({ children = "Apply", onClick }: { children?: ReactNode; onClick: () => void }) => (
+const ApplyButton = ({
+  children = "Apply",
+  onClick,
+  disabled,
+}: {
+  children?: ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+}) => (
   <button
     type="button"
     onClick={onClick}
+    disabled={disabled}
     className={cn(
       BRAND,
       "h-[46px] w-full rounded-[8px] text-[16px] font-semibold uppercase text-white transition-colors",
       "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#55244F]/50 focus-visible:ring-offset-2",
+      "disabled:cursor-not-allowed disabled:opacity-60",
       "sm:h-[50px] 2xl:h-[56px] 2xl:text-[22px]"
     )}
   >
@@ -209,6 +253,381 @@ const LineSkeleton = () => (
   </li>
 );
 
+/* -------------------- Address Form -------------------- */
+
+function AddressForm({
+  initial,
+  onSave,
+  onCancel,
+  saving,
+}: {
+  initial: AddressPayload;
+  onSave: (data: AddressPayload) => void;
+  onCancel: () => void;
+  saving: boolean;
+}) {
+  const [form, setForm] = useState<AddressPayload>(initial);
+
+  const set = (k: keyof AddressPayload, v: string | boolean) =>
+    setForm((f) => ({ ...f, [k]: v }));
+
+  const fields: { key: keyof AddressPayload; label: string; required?: boolean }[] = [
+    { key: "fullName", label: "Full Name", required: true },
+    { key: "phone", label: "Phone", required: true },
+    { key: "street", label: "Street", required: true },
+    { key: "addressLine1", label: "Address Line 1", required: true },
+    { key: "addressLine2", label: "Address Line 2 (optional)" },
+    { key: "city", label: "City", required: true },
+    { key: "state", label: "State", required: true },
+    { key: "country", label: "Country", required: true },
+    { key: "postalCode", label: "Postal Code", required: true },
+  ];
+
+  const handleSubmit = () => {
+    for (const { key, label, required } of fields) {
+      if (required && !String(form[key] ?? "").trim()) {
+        alert(`${label} is required`);
+        return;
+      }
+    }
+    onSave(form);
+  };
+
+  return (
+    <div className="max-h-[60vh] space-y-3 overflow-y-auto pr-1">
+      {fields.map(({ key, label }) => (
+        <input
+          key={key}
+          type="text"
+          aria-label={label}
+          placeholder={label}
+          value={String(form[key] ?? "")}
+          onChange={(e) => set(key, e.target.value)}
+          className={cn(fieldClass, inputH)}
+        />
+      ))}
+
+      <label className="flex cursor-pointer select-none items-center gap-2 text-[13px] text-black">
+        <input
+          type="checkbox"
+          checked={!!form.isDefault}
+          onChange={(e) => set("isDefault", e.target.checked)}
+          className="h-4 w-4 accent-[#55244F]"
+        />
+        Set as default address
+      </label>
+
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="h-[44px] flex-1 rounded-[8px] border border-[#BDBDBD] text-[14px] font-medium text-black transition-colors hover:bg-white/60"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={handleSubmit}
+          disabled={saving}
+          className={cn(
+            BRAND,
+            "h-[44px] flex-1 rounded-[8px] text-[14px] font-semibold text-white transition-colors",
+            "disabled:cursor-not-allowed disabled:opacity-60"
+          )}
+        >
+          {saving ? "Saving…" : "Save Address"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* -------------------- Address List Panel -------------------- */
+
+function ShippingPanel({
+  onClose,
+  selectedId,
+  onSelect,
+  onContinue,
+}: {
+  onClose: () => void;
+  selectedId: string;
+  onSelect: (id: string) => void;
+  /** Called when the customer confirms the selected address */
+  onContinue: () => void;
+}) {
+  const [view, setView] = useState<ShippingView>("list");
+  const [editing, setEditing] = useState<Address | null>(null);
+
+  const { data: addresses = [], isLoading } = useAddresses();
+  const createAddr = useCreateAddress();
+  const updateAddr = useUpdateAddress();
+  const deleteAddr = useDeleteAddress();
+
+  /* auto-select default (or first) address when nothing is selected */
+  useEffect(() => {
+    if (!selectedId && addresses.length > 0) {
+      const def = addresses.find((a) => a.isDefault) ?? addresses[0];
+      onSelect(def._id);
+    }
+  }, [addresses, selectedId, onSelect]);
+
+  const openAdd = () => {
+    setEditing(null);
+    setView("form");
+  };
+
+  const openEdit = (addr: Address) => {
+    setEditing(addr);
+    setView("form");
+  };
+
+  const handleSave = (payload: AddressPayload) => {
+    if (editing) {
+      updateAddr.mutate(
+        { id: editing._id, payload },
+        {
+          onSuccess: () => {
+            setView("list");
+            setEditing(null);
+          },
+        }
+      );
+    } else {
+      createAddr.mutate(payload, {
+        onSuccess: (res) => {
+          setView("list");
+          if (res.data?._id) onSelect(res.data._id);
+        },
+      });
+    }
+  };
+
+  const handleDelete = (id: string) => {
+    deleteAddr.mutate(id, {
+      onSuccess: () => {
+        if (selectedId === id) onSelect("");
+      },
+    });
+  };
+
+  const saving = createAddr.isPending || updateAddr.isPending;
+
+  return (
+    <ActionPanel title="Shipping Address" onClose={onClose}>
+      {view === "form" ? (
+        <AddressForm
+          initial={
+            editing
+              ? {
+                  fullName: editing.fullName,
+                  phone: editing.phone,
+                  street: editing.street,
+                  addressLine1: editing.addressLine1,
+                  addressLine2: editing.addressLine2 ?? "",
+                  city: editing.city,
+                  state: editing.state,
+                  country: editing.country,
+                  postalCode: editing.postalCode,
+                  isDefault: editing.isDefault,
+                }
+              : BLANK_FORM
+          }
+          onSave={handleSave}
+          onCancel={() => setView("list")}
+          saving={saving}
+        />
+      ) : (
+        <div className="space-y-3">
+          {isLoading ? (
+            <p className="text-center text-[13px] text-[#676767]">
+              Loading addresses…
+            </p>
+          ) : addresses.length === 0 ? (
+            <p className="text-center text-[13px] text-[#676767]">
+              No saved addresses yet.
+            </p>
+          ) : (
+            <ul className="max-h-[46vh] space-y-2 overflow-y-auto pr-1">
+              {addresses.map((addr) => {
+                const isSelected = addr._id === selectedId;
+                return (
+                  <li
+                    key={addr._id}
+                    onClick={() => onSelect(addr._id)}
+                    className={cn(
+                      "cursor-pointer rounded-[8px] border p-3 text-[13px] transition-colors",
+                      isSelected
+                        ? "border-[#55244F] bg-[#f8f0f8]"
+                        : "border-[#D5D5D5] bg-white hover:border-[#55244F]/50"
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-semibold text-black">
+                          {addr.fullName}
+                          {addr.isDefault && (
+                            <span className="ml-2 text-[11px] font-normal text-[#55244F]">
+                              (Default)
+                            </span>
+                          )}
+                        </p>
+                        <p className="mt-0.5 truncate text-[#525252]">
+                          {addr.addressLine1}
+                          {addr.addressLine2 ? `, ${addr.addressLine2}` : ""},{" "}
+                          {addr.street}
+                        </p>
+                        <p className="truncate text-[#525252]">
+                          {addr.city}, {addr.state}, {addr.country} —{" "}
+                          {addr.postalCode}
+                        </p>
+                        <p className="mt-0.5 text-[#676767]">{addr.phone}</p>
+                      </div>
+
+                      <div className="flex shrink-0 items-center gap-2">
+                        {/* Radio indicator */}
+                        <span
+                          aria-hidden="true"
+                          className={cn(
+                            "mt-0.5 h-[16px] w-[16px] shrink-0 rounded-full border-2 transition-colors",
+                            isSelected
+                              ? "border-[#55244F] bg-[#55244F]"
+                              : "border-[#D5D5D5] bg-white"
+                          )}
+                        />
+                        <button
+                          type="button"
+                          aria-label="Edit address"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openEdit(addr);
+                          }}
+                          className="rounded p-1 text-[#525252] hover:text-[#55244F] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#55244F]/40"
+                        >
+                          <Edit2 aria-hidden="true" className="size-[14px]" />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="Delete address"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(addr._id);
+                          }}
+                          disabled={deleteAddr.isPending}
+                          className="rounded p-1 text-[#FF4D4D] hover:text-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4D4D]/40 disabled:opacity-50"
+                        >
+                          <Trash2 aria-hidden="true" className="size-[14px]" />
+                        </button>
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+
+          <button
+            type="button"
+            onClick={openAdd}
+            className={cn(
+              "flex w-full items-center justify-center gap-2 rounded-[8px] border-2 border-dashed border-[#BDBDBD]",
+              "py-3 text-[13px] font-medium text-[#676767] transition-colors hover:border-[#55244F] hover:text-[#55244F]",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#55244F]/40"
+            )}
+          >
+            <Plus aria-hidden="true" className="size-[14px]" />
+            Add New Address
+          </button>
+
+          <ApplyButton onClick={onContinue} disabled={!selectedId}>
+            Deliver to this address
+          </ApplyButton>
+        </div>
+      )}
+    </ActionPanel>
+  );
+}
+
+/* -------------------- Order Confirm Panel -------------------- */
+
+function OrderConfirmPanel({
+  lines,
+  note,
+  discountCode,
+  selectedAddressId,
+  onClose,
+  onOrderSuccess,
+}: {
+  lines: CartLine[];
+  note: string;
+  discountCode: string;
+  selectedAddressId: string;
+  onClose: () => void;
+  onOrderSuccess: () => void;
+}) {
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("COD");
+  const placeOrder = usePlaceOrder({ onSuccess: onOrderSuccess });
+
+  const handlePlace = () => {
+    if (!selectedAddressId) {
+      alert("Please select a shipping address first.");
+      return;
+    }
+    placeOrder.mutate({
+      addressId: selectedAddressId,
+      paymentMethod,
+      productIds: lines.map((l) => l.id),
+      couponCode: discountCode || undefined,
+      orderNote: note || undefined,
+    });
+  };
+
+  return (
+    <ActionPanel title="Place Order" onClose={onClose}>
+      {/* Payment method */}
+      <div className="space-y-2">
+        <p className="text-[13px] font-medium text-black">Payment Method</p>
+        <div className="flex gap-3">
+          {(["COD", "ONLINE"] as PaymentMethod[]).map((m) => (
+            <label
+              key={m}
+              className={cn(
+                "flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-[8px] border py-2.5 text-[13px] font-medium transition-colors",
+                paymentMethod === m
+                  ? "border-[#55244F] bg-[#f8f0f8] text-[#55244F]"
+                  : "border-[#D5D5D5] bg-white text-[#525252] hover:border-[#55244F]/50"
+              )}
+            >
+              <input
+                type="radio"
+                name="payment"
+                value={m}
+                checked={paymentMethod === m}
+                onChange={() => setPaymentMethod(m)}
+                className="sr-only"
+              />
+              {m === "COD" ? "Cash on Delivery" : "Online Payment"}
+            </label>
+          ))}
+        </div>
+      </div>
+
+      {!selectedAddressId && (
+        <p className="text-[12px] text-[#FF4D4D]">
+          ⚠ Please select a shipping address.
+        </p>
+      )}
+
+      <ApplyButton
+        onClick={handlePlace}
+        disabled={placeOrder.isPending || !selectedAddressId}
+      >
+        {placeOrder.isPending ? "Placing Order…" : "Confirm Order"}
+      </ApplyButton>
+    </ActionPanel>
+  );
+}
+
 /* -------------------------------- Component -------------------------------- */
 
 const CartDrawer = ({
@@ -216,24 +635,21 @@ const CartDrawer = ({
   onClose,
   recentlyViewed = EMPTY_RECENT,
   freeShippingThreshold = 135,
-  countries = DEFAULT_COUNTRIES,
   onAddRecent,
   onApplyNote,
-  onApplyShipping,
   onApplyDiscount,
-  onBuyNow,
   className,
 }: CartDrawerProps) => {
   const uid = useId();
   const panelRef = useRef<HTMLDivElement>(null);
+  const router = useRouter();
 
   const [tab, setTab] = useState<Tab>("cart");
   const [panel, setPanel] = useState<Panel>(null);
   const [note, setNote] = useState("");
-  const [country, setCountry] = useState("");
-  const [postal, setPostal] = useState("");
   const [code, setCode] = useState("");
   const [confirmClear, setConfirmClear] = useState(false);
+  const [selectedAddressId, setSelectedAddressId] = useState<string>("");
 
   /* ------------------------------ Cart data ------------------------------ */
 
@@ -274,6 +690,21 @@ const CartDrawer = ({
         },
       }
     );
+  };
+
+  /* ------------------------------ Buy Now ------------------------------ */
+
+  const handleBuyNow = () => {
+    if (!isCustomerLoggedIn()) {
+      // Save return destination and redirect to login
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem("redirect_after_login", window.location.pathname);
+      }
+      onClose();
+      router.push("/login?redirect=cart");
+      return;
+    }
+    setPanel("shipping");
   };
 
   /* ------------------------------ Drawer UX ------------------------------ */
@@ -331,7 +762,11 @@ const CartDrawer = ({
       active ? "text-black" : "text-[#BDBDBD] hover:text-[#8E8E8E]"
     );
 
-  const actionButton = (id: Exclude<Panel, null>, label: string, icon: ReactNode) => (
+  const actionButton = (
+    id: Exclude<Panel, "order" | null>,
+    label: string,
+    icon: ReactNode
+  ) => (
     <button
       type="button"
       onClick={() => setPanel(id)}
@@ -364,15 +799,14 @@ const CartDrawer = ({
           role="alert"
           className="mt-8 flex flex-col items-center gap-3 text-center text-[14px] text-[#676767] 2xl:text-[16px]"
         >
-        
-            <button
-              type="button"
-              onClick={() => refetch()}
-              className="rounded-full border border-[#55244F] px-4 py-1.5 text-[13px] font-medium text-[#55244F] transition-colors hover:bg-[#55244F] hover:text-white"
-            >
-              Try again
-            </button>
-        
+          <p>{getErrorMessage(error)}</p>
+          <button
+            type="button"
+            onClick={() => refetch()}
+            className="rounded-full border border-[#55244F] px-4 py-1.5 text-[13px] font-medium text-[#55244F] transition-colors hover:bg-[#55244F] hover:text-white"
+          >
+            Try again
+          </button>
         </div>
       );
     }
@@ -617,7 +1051,36 @@ const CartDrawer = ({
                 {/* Order note / Shipping / Discount */}
                 <div className="flex shrink-0 border-t border-[#D5D5D5] bg-white">
                   {actionButton("note", "Order Note", <ClipboardList aria-hidden="true" />)}
-                  {actionButton("shipping", "Shipping", <Package aria-hidden="true" />)}
+
+                  {/* Shipping: requires login */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!isCustomerLoggedIn()) {
+                        if (typeof window !== "undefined") {
+                          sessionStorage.setItem(
+                            "redirect_after_login",
+                            window.location.pathname
+                          );
+                        }
+                        onClose();
+                        router.push("/login?redirect=cart");
+                        return;
+                      }
+                      setPanel("shipping");
+                    }}
+                    className={cn(
+                      "flex min-w-0 flex-1 items-center justify-center gap-2 px-2 py-4 2xl:py-5",
+                      "text-[13px] font-normal capitalize leading-none text-black sm:text-[15px] 2xl:text-[18px]",
+                      "transition-colors hover:bg-[#F6F6F6] focus-visible:bg-[#F6F6F6] focus-visible:outline-none",
+                      "[&_svg]:size-[16px] [&_svg]:shrink-0 sm:[&_svg]:size-[18px] 2xl:[&_svg]:size-[20px]",
+                      "[&:not(:first-child)]:border-l [&:not(:first-child)]:border-[#D5D5D5]"
+                    )}
+                  >
+                    <Package aria-hidden="true" />
+                    <span className="truncate pb-[2px] leading-[1.3]">Shipping</span>
+                  </button>
+
                   {actionButton("discount", "Discount", <BadgePercent aria-hidden="true" />)}
                 </div>
 
@@ -628,6 +1091,19 @@ const CartDrawer = ({
                     SAFE_BOTTOM
                   )}
                 >
+                  {/* Selected address badge */}
+                  {selectedAddressId && isCustomerLoggedIn() && (
+                    <button
+                      type="button"
+                      onClick={() => setPanel("shipping")}
+                      className="mb-3 flex w-full items-center gap-2 rounded-[8px] border border-[#55244F]/30 bg-white px-3 py-2 text-left text-[12px] text-[#55244F] transition-colors hover:bg-[#f8f0f8]"
+                    >
+                      <MapPin aria-hidden="true" className="size-[13px] shrink-0" />
+                      <span className="truncate">Delivering to selected address</span>
+                      <Edit2 aria-hidden="true" className="ml-auto size-[12px] shrink-0" />
+                    </button>
+                  )}
+
                   <div className="flex items-end justify-between gap-4">
                     <p className="max-w-[55%] text-[13px] font-normal capitalize leading-[1.4] text-black sm:text-[15px] 2xl:text-[18px] 2xl:leading-[1.3]">
                       Tax included. Shipping calculated at checkout.
@@ -641,9 +1117,40 @@ const CartDrawer = ({
                       </p>
                     </div>
                   </div>
+                  {/* Guest: show Login button; logged-in: show Buy Now */}
+                  {!isCustomerLoggedIn() ? (
+                    <div className="mt-4 flex flex-col gap-2 2xl:mt-5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (typeof window !== "undefined") {
+                            sessionStorage.setItem(
+                              "redirect_after_login",
+                              window.location.pathname
+                            );
+                          }
+                          onClose();
+                          router.push("/login?redirect=cart");
+                        }}
+                        // disabled={isLoading || isError || lines.length === 0}
+                        className={cn(
+                          BRAND,
+                          "h-[48px] w-full rounded-[8px] text-[16px] font-semibold uppercase text-white transition-colors",
+                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#55244F]/50 focus-visible:ring-offset-2",
+                          "disabled:cursor-not-allowed disabled:opacity-50",
+                          "sm:h-[52px] 2xl:h-[60px] 2xl:text-[22px]"
+                        )}
+                      >
+                        Login to Checkout
+                      </button>
+                      <p className="text-center text-[11px] text-[#676767] 2xl:text-[13px]">
+                        You need to be logged in to place an order
+                      </p>
+                    </div>
+                  ) : (
                   <button
                     type="button"
-                    onClick={onBuyNow}
+                    onClick={handleBuyNow}
                     disabled={isLoading || isError || lines.length === 0}
                     className={cn(
                       BRAND,
@@ -655,6 +1162,7 @@ const CartDrawer = ({
                   >
                     Buy now
                   </button>
+                  )}
                 </div>
               </>
             )}
@@ -678,49 +1186,12 @@ const CartDrawer = ({
             )}
 
             {panel === "shipping" && (
-              <ActionPanel title="Estimate Shipping" onClose={() => setPanel(null)}>
-                <div className="relative">
-                  <select
-                    aria-label="Country or region"
-                    value={country}
-                    onChange={(e) => setCountry(e.target.value)}
-                    className={cn(
-                      fieldClass,
-                      "h-[46px] appearance-none pr-10 sm:h-[50px] 2xl:h-[56px]",
-                      country === "" && "text-[#676767]"
-                    )}
-                  >
-                    <option value="" disabled>
-                      Country/Region
-                    </option>
-                    {countries.map((c) => (
-                      <option key={c} value={c} className="text-black">
-                        {c}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown
-                    aria-hidden="true"
-                    className="pointer-events-none absolute right-4 top-1/2 size-[18px] -translate-y-1/2 text-black"
-                  />
-                </div>
-                <input
-                  type="text"
-                  inputMode="text"
-                  autoComplete="postal-code"
-                  aria-label="Postal or ZIP code"
-                  placeholder="Postal/ZIP Code"
-                  value={postal}
-                  onChange={(e) => setPostal(e.target.value)}
-                  className={cn(fieldClass, "h-[46px] sm:h-[50px] 2xl:h-[56px]")}
-                />
-                <ApplyButton
-                  onClick={() => {
-                    onApplyShipping?.({ country, postalCode: postal.trim() });
-                    setPanel(null);
-                  }}
-                />
-              </ActionPanel>
+              <ShippingPanel
+                onClose={() => setPanel(null)}
+                selectedId={selectedAddressId}
+                onSelect={setSelectedAddressId}
+                onContinue={() => setPanel("order")}
+              />
             )}
 
             {panel === "discount" && (
@@ -731,7 +1202,7 @@ const CartDrawer = ({
                   placeholder="Discount Code"
                   value={code}
                   onChange={(e) => setCode(e.target.value)}
-                  className={cn(fieldClass, "h-[46px] sm:h-[50px] 2xl:h-[56px]")}
+                  className={cn(fieldClass, inputH)}
                 />
                 <ApplyButton
                   onClick={() => {
@@ -740,6 +1211,20 @@ const CartDrawer = ({
                   }}
                 />
               </ActionPanel>
+            )}
+
+            {panel === "order" && (
+              <OrderConfirmPanel
+                lines={lines}
+                note={note}
+                discountCode={code}
+                selectedAddressId={selectedAddressId}
+                onClose={() => setPanel(null)}
+                onOrderSuccess={() => {
+                  setPanel(null);
+                  onClose();
+                }}
+              />
             )}
           </>
         )}

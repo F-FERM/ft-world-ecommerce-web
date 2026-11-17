@@ -116,7 +116,16 @@ console.log(visibleProducts,'visible');
     (product: Product) => {
       if (adding) return; // ignore double clicks while a request is running
       addToCart(
-        { productId: product.id, quantity: 1, name: product.title },
+        {
+          productId: product.id,
+          quantity: 1,
+          name: product.title,
+          price: product.price,
+          compareAtPrice: product.oldPrice,
+          compatibleWith: product.compatibleFor,
+          compatibleModels: product.models,
+          image: typeof product.image === "string" ? product.image : undefined,
+        },
         { onSuccess: onAddedToCart }
       );
     },

@@ -1,5 +1,6 @@
 
 import axiosInstance from "@/src/service/axios";
+import { TOKEN_KEYS, guestCart } from "@/src/utility/localStorage";
 import {
   useMutation,
   useQuery,
@@ -205,14 +206,44 @@ const settleCart = (queryClient: QueryClient) => {
 /*                                    HOOKS                                   */
 /* -------------------------------------------------------------------------- */
 
-export const useCart = (options?: { enabled?: boolean }) =>
-  useQuery<CartResponse, unknown, CartLine[]>({
+/** Returns true when a customer (not admin) token is present */
+export const isCustomerLoggedIn = (): boolean => {
+  if (typeof window === "undefined") return false;
+  return !!localStorage.getItem(TOKEN_KEYS.customer);
+};
+
+export const useCart = (options?: { enabled?: boolean }) => {
+  const loggedIn = isCustomerLoggedIn();
+
+  // Logged-in customer → fetch from API
+  const apiCart = useQuery<CartResponse, unknown, CartLine[]>({
     queryKey: CART_KEY,
     queryFn: GetCartApi,
     select: toLines,
-    enabled: options?.enabled ?? true,
-    
+    enabled: loggedIn && (options?.enabled ?? true),
   });
+
+  // Guest → read from localStorage
+  const guestCartQuery = useQuery<CartLine[]>({
+    queryKey: ["guest-cart"],
+    queryFn: () =>
+      guestCart.get().map((item) => ({
+        id: item.productId,
+        title: item.name ?? item.productId,
+        compatibleWith: item.compatibleWith ?? "",
+        compatibleModels: item.compatibleModels ?? "",
+        price: item.price ?? 0,
+        compareAtPrice: item.compareAtPrice,
+        image: item.image ?? FALLBACK_IMAGE,
+        quantity: item.quantity,
+        stock: item.stock,
+      })) as CartLine[],
+    enabled: !loggedIn && (options?.enabled ?? true),
+    staleTime: 0,
+  });
+
+  return loggedIn ? apiCart : guestCartQuery;
+};
 export interface AddBundlePayload {
   items: { productId: string; quantity: number }[];
 }
@@ -234,18 +265,45 @@ export async function addBundleToCart(payload: AddBundlePayload) {
 }
 export const useAddToCart = () => {
   const queryClient = useQueryClient();
+  const loggedIn = isCustomerLoggedIn();
 
   return useMutation({
     mutationKey: CART_KEY,
-    mutationFn: async (data: AddToCartPayload & { name?: string }) => {
-      return await AddToCartApi({
+    mutationFn: async (data: AddToCartPayload & {
+      name?: string;
+      price?: number;
+      compareAtPrice?: number;
+      compatibleWith?: string;
+      compatibleModels?: string;
+      image?: string;
+      stock?: number;
+    }) => {
+      if (loggedIn) {
+        return await AddToCartApi({
+          productId: data.productId,
+          quantity: data.quantity ?? 1,
+        });
+      }
+      // Guest: save ALL display details to localStorage
+      return guestCart.add({
         productId: data.productId,
         quantity: data.quantity ?? 1,
+        name: data.name,
+        price: data.price,
+        compareAtPrice: data.compareAtPrice,
+        compatibleWith: data.compatibleWith,
+        compatibleModels: data.compatibleModels,
+        image: data.image,
+        stock: data.stock,
       });
     },
     onSuccess: (_data, variables) => {
       toast.success(`${variables.name ?? "Item"} added to cart`);
-      queryClient.invalidateQueries({ queryKey: CART_KEY });
+      if (loggedIn) {
+        queryClient.invalidateQueries({ queryKey: CART_KEY });
+      } else {
+        queryClient.invalidateQueries({ queryKey: ["guest-cart"] });
+      }
     },
     onError: (error: unknown) => {
       toast.error(getErrorMessage(error, "Couldn't add to cart"));
@@ -255,6 +313,7 @@ export const useAddToCart = () => {
 
 export const useUpdateCartItem = () => {
   const queryClient = useQueryClient();
+  const loggedIn = isCustomerLoggedIn();
 
   return useMutation<
     unknown,
@@ -264,10 +323,18 @@ export const useUpdateCartItem = () => {
   >({
     mutationKey: CART_KEY,
     mutationFn: async (data) => {
+      if (!loggedIn) {
+        // Guest: update localStorage
+        return guestCart.update(data.productId, data.quantity);
+      }
       return await UpdateCartApi(data);
     },
-    // update the UI instantly, roll back if the request fails
+    // Optimistic update for logged-in; instant for guest (localStorage is sync)
     onMutate: async ({ productId, quantity }) => {
+      if (!loggedIn) {
+        queryClient.invalidateQueries({ queryKey: ["guest-cart"] });
+        return {};
+      }
       await queryClient.cancelQueries({ queryKey: CART_KEY });
       const previous = queryClient.getQueryData<CartResponse>(CART_KEY);
       patchCartItems(queryClient, (items) =>
@@ -278,16 +345,21 @@ export const useUpdateCartItem = () => {
       return { previous };
     },
     onError: (error, _variables, context) => {
-      if (context?.previous)
-        queryClient.setQueryData(CART_KEY, context.previous);
+      if (!loggedIn) return;
+      if ((context as any)?.previous)
+        queryClient.setQueryData(CART_KEY, (context as any).previous);
       toast.error(getErrorMessage(error, "Couldn't update quantity"));
     },
-    onSettled: () => settleCart(queryClient),
+    onSettled: () => {
+      if (loggedIn) settleCart(queryClient);
+      else queryClient.invalidateQueries({ queryKey: ["guest-cart"] });
+    },
   });
 };
 
 export const useRemoveCartItem = () => {
   const queryClient = useQueryClient();
+  const loggedIn = isCustomerLoggedIn();
 
   return useMutation<
     unknown,
@@ -297,9 +369,16 @@ export const useRemoveCartItem = () => {
   >({
     mutationKey: CART_KEY,
     mutationFn: async (data) => {
+      if (!loggedIn) {
+        return guestCart.remove(data.productId);
+      }
       return await RemoveFromCartApi({ productId: data.productId });
     },
     onMutate: async ({ productId }) => {
+      if (!loggedIn) {
+        queryClient.invalidateQueries({ queryKey: ["guest-cart"] });
+        return {};
+      }
       await queryClient.cancelQueries({ queryKey: CART_KEY });
       const previous = queryClient.getQueryData<CartResponse>(CART_KEY);
       patchCartItems(queryClient, (items) =>
@@ -311,23 +390,36 @@ export const useRemoveCartItem = () => {
       toast.success(`${variables.name ?? "Item"} removed from cart`);
     },
     onError: (error, _variables, context) => {
-      if (context?.previous)
-        queryClient.setQueryData(CART_KEY, context.previous);
+      if (!loggedIn) return;
+      if ((context as any)?.previous)
+        queryClient.setQueryData(CART_KEY, (context as any).previous);
       toast.error(getErrorMessage(error, "Couldn't remove item"));
     },
-    onSettled: () => settleCart(queryClient),
+    onSettled: () => {
+      if (loggedIn) settleCart(queryClient);
+      else queryClient.invalidateQueries({ queryKey: ["guest-cart"] });
+    },
   });
 };
 
 export const useClearCart = () => {
   const queryClient = useQueryClient();
+  const loggedIn = isCustomerLoggedIn();
 
   return useMutation<unknown, unknown, void, { previous?: CartResponse }>({
     mutationKey: CART_KEY,
     mutationFn: async () => {
+      if (!loggedIn) {
+        guestCart.clear();
+        return;
+      }
       return await ClearCartApi();
     },
     onMutate: async () => {
+      if (!loggedIn) {
+        queryClient.invalidateQueries({ queryKey: ["guest-cart"] });
+        return {};
+      }
       await queryClient.cancelQueries({ queryKey: CART_KEY });
       const previous = queryClient.getQueryData<CartResponse>(CART_KEY);
       patchCartItems(queryClient, () => []);
@@ -337,10 +429,14 @@ export const useClearCart = () => {
       toast.success("Cart cleared");
     },
     onError: (error, _variables, context) => {
-      if (context?.previous)
-        queryClient.setQueryData(CART_KEY, context.previous);
+      if (!loggedIn) return;
+      if ((context as any)?.previous)
+        queryClient.setQueryData(CART_KEY, (context as any).previous);
       toast.error(getErrorMessage(error, "Couldn't clear cart"));
     },
-    onSettled: () => settleCart(queryClient),
+    onSettled: () => {
+      if (loggedIn) settleCart(queryClient);
+      else queryClient.invalidateQueries({ queryKey: ["guest-cart"] });
+    },
   });
 };

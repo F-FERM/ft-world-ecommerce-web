@@ -21,13 +21,33 @@ export default function ProductInfo({ product }: { product: ProductDetail }) {
 
   const handleAddToCart = () => {
     if (adding) return;
-    addToCart({ productId: product.id, quantity: qty, name: product.fullTitle });
+    addToCart({
+      productId: product.id,
+      quantity: qty,
+      name: product.fullTitle,
+      price: product.price,
+      compareAtPrice: product.oldPrice,
+      compatibleWith: product.compatibleFor,
+      compatibleModels: product.compatibleModels,
+      image: product.gallery?.[0],
+      stock: product.stock,
+    });
   };
 
   const handleBuyNow = () => {
     if (adding) return;
     addToCart(
-      { productId: product.id, quantity: qty, name: product.fullTitle },
+      {
+        productId: product.id,
+        quantity: qty,
+        name: product.fullTitle,
+        price: product.price,
+        compareAtPrice: product.oldPrice,
+        compatibleWith: product.compatibleFor,
+        compatibleModels: product.compatibleModels,
+        image: product.gallery?.[0],
+        stock: product.stock,
+      },
       { onSuccess: () => window.location.href = "/cart" }
     );
   };

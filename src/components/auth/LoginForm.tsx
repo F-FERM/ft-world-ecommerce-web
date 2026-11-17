@@ -1,7 +1,9 @@
 "use client";
 import { authApi } from "@/src/api/auth";
+import { LocalStorage, TOKEN_KEYS, guestCart } from "@/src/utility/localStorage";
+import { AddToCartApi } from "@/src/api/useCart";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import OtpForm from "./OtpForm";
 import FormField from "./FormField";
@@ -9,15 +11,58 @@ import FormField from "./FormField";
 
 export default function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [mode, setMode] = useState<"password" | "otp">("password");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
+  /** After a successful login: sync guest cart → API, then redirect */
+  async function onLoggedIn(data: any) {
+    // 1. Save customer token
+    const token =
+      data?.access_token ??
+      data?.data?.access_token ??
+      data?.tokens?.accessToken ??
+      null;
+    if (token) {
+      LocalStorage.setItem(TOKEN_KEYS.customer, token);
+    }
 
-  function onLoggedIn(_data: unknown) {
-    router.push("/");
+    // 2. Sync guest_cart items to the customer cart API
+    const guestItems = guestCart.get();
+    if (guestItems.length > 0) {
+      try {
+        await Promise.all(
+          guestItems.map((item) =>
+            AddToCartApi({ productId: item.productId, quantity: item.quantity })
+          )
+        );
+        // 3. Clear guest cart only after successful sync
+        guestCart.clear();
+      } catch {
+        // If sync partially fails, leave guest cart intact for retry
+      }
+    }
+
+    // 4. Redirect: honour ?redirect param or sessionStorage redirect, else home
+    const redirectParam = searchParams?.get("redirect");
+    const sessionRedirect =
+      typeof window !== "undefined"
+        ? sessionStorage.getItem("redirect_after_login")
+        : null;
+
+    if (sessionRedirect) {
+      sessionStorage.removeItem("redirect_after_login");
+    }
+
+    const destination =
+      redirectParam === "cart" || sessionRedirect
+        ? sessionRedirect ?? "/"
+        : "/";
+
+    router.push(destination || "/");
   }
 
   async function handleSubmit(e: FormEvent) {

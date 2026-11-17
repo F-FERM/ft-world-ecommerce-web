@@ -9,7 +9,8 @@ import { cn } from "@/src/lib/utils";
 import NavSearchBar from "../NavSearchBar";
 import LOGO_SRC from "../../../../public/images/logo.png";
 import CartDrawer from "../CartDrawer";
-import { useCart } from "@/src/api/useCart";
+import { useCart, isCustomerLoggedIn } from "@/src/api/useCart";
+import { guestCart } from "@/src/utility/localStorage";
 
 /* ------------------------------- types ------------------------------- */
 
@@ -248,11 +249,16 @@ const Navbar = ({ onSearch, className }: NavbarProps) => {
   // which parent is expanded in the mobile panel
   const [expanded, setExpanded] = useState<string | null>(null);
 
-  // cart item count for the badge
-  const { data: cartLines = [] } = useCart();
+  // cart item count: API count for logged-in customer, localStorage count for guest
+  const loggedIn = isCustomerLoggedIn();
+  const { data: cartLines = [] } = useCart({ enabled: loggedIn });
   const cartCount = useMemo(
-    () => cartLines.reduce((sum, l) => sum + l.quantity, 0),
-    [cartLines]
+    () =>
+      loggedIn
+        ? cartLines.reduce((sum, l) => sum + l.quantity, 0)
+        : guestCart.count(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [loggedIn, cartLines]
   );
 
   const closeMenu = useCallback(() => {

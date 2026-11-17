@@ -42,6 +42,10 @@ export interface ProductDetail {
   discount: number;
   stock: number;
   inStock: boolean;
+  /** e.g. "COMPATIBLE FOR CANON IR:" */
+  compatibleFor?: string;
+  /** e.g. "4525i/ 4535i/ 4545i 4725 (CEXV53)" */
+  compatibleModels?: string;
   shipsIn?: string;
   supportInfo?: string;
   warranty?: string;
@@ -105,6 +109,8 @@ const toProductDetail = (p: ApiProduct): ProductDetail => {
     discount,
     stock: p.stock,
     inStock: p.stock > 0,
+    compatibleFor: p.compatibleDescription,
+    compatibleModels: p.compatibleValues,
     shipsIn: p.shipsIn,
     supportInfo: p.supportInfo,
     warranty: p.warranty,

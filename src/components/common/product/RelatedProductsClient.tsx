@@ -20,7 +20,16 @@ export default function RelatedProductsClient({
   const handleAddToCart = useCallback(
     (product: Product) => {
       if (adding) return;
-      addToCart({ productId: product.id, quantity: 1, name: product.title });
+      addToCart({
+        productId: product.id,
+        quantity: 1,
+        name: product.title,
+        price: product.price,
+        compareAtPrice: product.oldPrice,
+        compatibleWith: product.compatibleFor,
+        compatibleModels: product.models,
+        image: typeof product.image === "string" ? product.image : undefined,
+      });
     },
     [adding, addToCart]
   );

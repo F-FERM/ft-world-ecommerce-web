@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/src/components/ui/sidebar";
 import { AppSidebar } from "@/src/components/admin/Sidebar";
 import { TooltipProvider } from "@/src/components/ui/tooltip";
+import { TOKEN_KEYS } from "@/src/utility/localStorage";
 
 export default function AdminLayout({ children }: any) {
   const router = useRouter();
@@ -16,7 +17,7 @@ export default function AdminLayout({ children }: any) {
 
   useEffect(() => {
     setMounted(true);
-    const token = localStorage.getItem("access_token");
+    const token = localStorage.getItem(TOKEN_KEYS.admin);
 
     if (!token) {
       router.replace("/admin/login/");

@@ -8,6 +8,7 @@ import { Lock, ShieldCheck, User2, ArrowRight } from "lucide-react";
 import { motion } from "framer-motion";
 import toast, { Toaster } from "react-hot-toast";
 import api from "@/src/lib/axios";
+import { TOKEN_KEYS } from "@/src/utility/localStorage";
 import { Card, CardContent } from "../ui/card";
 import { Label } from "../ui/label";
 import { Input } from "../ui/input";
@@ -21,7 +22,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const token = localStorage.getItem("access_token");
+    const token = localStorage.getItem(TOKEN_KEYS.admin);
 
     if (token) {
       router.replace("/admin/dashboard/");
@@ -41,7 +42,8 @@ export default function LoginPage() {
         password,
       });
 
-      localStorage.setItem("access_token", res.data.access_token);
+      // Save under the admin-specific key
+      localStorage.setItem(TOKEN_KEYS.admin, res.data.access_token);
 
       toast.success("Login successful");
 
@@ -67,8 +69,7 @@ export default function LoginPage() {
 
         overflow-hidden
 
-        bg-[#FFF4EC]
-
+  bg-[#FFF4EC]
         lg:flex-row
       "
     >
@@ -121,7 +122,7 @@ export default function LoginPage() {
 
             rounded-full
 
-            bg-[#EA580C]/20
+            bg-[#542452]/20
 
             blur-[100px]
 
@@ -153,7 +154,7 @@ export default function LoginPage() {
 
             rounded-full
 
-            bg-[#FB923C]/25
+            bg-[#542452]/25
 
             blur-[100px]
 
@@ -185,7 +186,7 @@ export default function LoginPage() {
 
             rounded-full
 
-            bg-[#FDBA74]/15
+            bg-[#542452]/15
 
             blur-[80px]
 
@@ -227,7 +228,7 @@ export default function LoginPage() {
 
           overflow-hidden
 
-          bg-[#daa732]
+          bg-[#542452]
 
           p-[32px]
 
@@ -460,7 +461,7 @@ export default function LoginPage() {
 
                   rounded-[16px]
 
-                  bg-[#C2410C]
+                  bg-[#542452]
 
                   text-white
 
@@ -589,7 +590,7 @@ export default function LoginPage() {
 
                       rounded-[14px]
 
-                      border-[#E4E4E4]
+                      border-[#542452]
 
                       bg-white
 
@@ -599,7 +600,7 @@ export default function LoginPage() {
 
                       shadow-none
 
-                      focus-visible:ring-[#EA580C]/30
+                      focus-visible:ring-[#542452]/30
 
                       sm:h-[58px]
 
@@ -662,7 +663,7 @@ export default function LoginPage() {
 
                       rounded-[14px]
 
-                      border-[#E4E4E4]
+                      border-[#542452]
 
                       bg-white
 
@@ -672,7 +673,7 @@ export default function LoginPage() {
 
                       shadow-none
 
-                      focus-visible:ring-[#EA580C]/30
+                      focus-visible:ring-[#542452]/30
 
                       sm:h-[58px]
 
@@ -703,7 +704,7 @@ export default function LoginPage() {
 
                   rounded-[16px]
 
-                  bg-[#daa732]
+                  bg-[#542452]
 
                   text-[15px]
                   font-medium
@@ -713,8 +714,8 @@ export default function LoginPage() {
                   transition-all
                   duration-500
 
-                  hover:bg-[#daa732]
-                  hover:shadow-[0_18px_40px_rgba(234,88,12,0.35)]
+                 hover:bg-[#542452]
+hover:shadow-[0_18px_40px_rgba(84,36,82,0.35)]
 
                   sm:mt-[30px]
 
@@ -776,7 +777,7 @@ export default function LoginPage() {
                         border-white
                         border-t-transparent
 
-                        group-hover:border-[#daa732]
+                        group-hover:border-[#542452]
                       "
                     />
                   ) : (
@@ -786,7 +787,7 @@ export default function LoginPage() {
                           transition-all
                           duration-500
 
-                          group-hover:text-[#daa732]
+                          group-hover:text-[#542452]
                         "
                       >
                         Login To Dashboard
@@ -801,7 +802,7 @@ export default function LoginPage() {
                           duration-500
 
                           group-hover:translate-x-[4px]
-                          group-hover:text-[#daa732]
+                          group-hover:text-[#542452]
                         "
                       />
                     </>
