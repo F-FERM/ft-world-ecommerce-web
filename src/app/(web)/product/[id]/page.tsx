@@ -21,7 +21,7 @@ export async function generateMetadata({ params }: Props) {
 
 async function ProductContent({ params }: Props) {
   const { id } = await params;
-  const product = await getProduct(id); // deduped with generateMetadata
+  const product = await getProduct(id); 
   if (!product) notFound();
 
   return <ProductDetailView product={product} />;

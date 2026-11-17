@@ -6,6 +6,7 @@ import Image from "next/image";
 import payment from "../../../../public/icons/payment.png";
 import { ProductDetail } from "@/src/api/products";
 import { cn } from "@/src/lib/utils";
+import { useAddToCart } from "@/src/api/useCart";
 
 const fmt = (v: number) => `AED. ${v.toFixed(2)}`;
 const primaryBtn =
@@ -16,8 +17,20 @@ export default function ProductInfo({ product }: { product: ProductDetail }) {
   const { fullTitle, features, price, oldPrice, discount, inStock, stock } = product;
   const total = Math.round(price * qty * 100) / 100;
 
-  const handleAddToCart = () => console.log("Add to cart:", product.id, qty);
-  const handleBuyNow = () => console.log("Buy now:", product.id, qty);
+  const { mutate: addToCart, isPending: adding } = useAddToCart();
+
+  const handleAddToCart = () => {
+    if (adding) return;
+    addToCart({ productId: product.id, quantity: qty, name: product.fullTitle });
+  };
+
+  const handleBuyNow = () => {
+    if (adding) return;
+    addToCart(
+      { productId: product.id, quantity: qty, name: product.fullTitle },
+      { onSuccess: () => window.location.href = "/cart" }
+    );
+  };
 
   return (
     <div className="flex flex-col gap-5">
@@ -103,17 +116,17 @@ export default function ProductInfo({ product }: { product: ProductDetail }) {
         <button
           type="button"
           onClick={handleAddToCart}
-          disabled={!inStock}
+          disabled={!inStock || adding}
           className={`${primaryBtn} flex-1`}
         >
-          Add to cart - {total} AED
+          {adding ? "Adding…" : `Add to cart - ${total} AED`}
         </button>
       </div>
 
       <button
         type="button"
         onClick={handleBuyNow}
-        disabled={!inStock}
+        disabled={!inStock || adding}
         className={`${primaryBtn} flex w-full items-center justify-center gap-3`}
       >
         Buy now

@@ -8,15 +8,14 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/src/components/
 import { AppSidebar } from "@/src/components/admin/Sidebar";
 import { TooltipProvider } from "@/src/components/ui/tooltip";
 
-
-
-
 export default function AdminLayout({ children }: any) {
   const router = useRouter();
 
+  const [mounted, setMounted] = useState(false);
   const [authorized, setAuthorized] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     const token = localStorage.getItem("access_token");
 
     if (!token) {
@@ -25,6 +24,9 @@ export default function AdminLayout({ children }: any) {
       setAuthorized(true);
     }
   }, [router]);
+
+  // Don't render anything on the server — avoids base-ui ID hydration mismatches
+  if (!mounted) return null;
 
   return (
     <TooltipProvider>
@@ -38,49 +40,25 @@ export default function AdminLayout({ children }: any) {
             className="
               flex
               h-16
-
               shrink-0
-
               items-center
               gap-2
-
               border-b
-
               bg-white
-
               px-4
             "
           >
             <SidebarTrigger />
 
-            <h1
-              className="
-                text-[18px]
-                font-semibold
-              "
-            >
-                FT World Admin
+            <h1 className="text-[18px] font-semibold">
+              FT World Admin
             </h1>
           </header>
 
           {/* ================= CONTENT ================= */}
 
-          <main
-            className="
-              flex-1
-
-              bg-[#F7F7F7]
-
-              p-6
-            "
-          >
-            {authorized ? (
-              children
-            ) : (
-              <div className="hidden" aria-hidden="true">
-                {children}
-              </div>
-            )}
+          <main className="flex-1 bg-[#F7F7F7] p-6">
+            {authorized ? children : null}
           </main>
         </SidebarInset>
       </SidebarProvider>

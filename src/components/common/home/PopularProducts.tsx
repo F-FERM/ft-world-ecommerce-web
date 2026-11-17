@@ -3,7 +3,9 @@
 import { useCallback, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/src/lib/utils";
+
 import ProductCard, { Product } from "../ProductCard";
+import { useAddToCart } from "@/src/api/useCart";
 
 /* ----------------------------- API types ----------------------------- */
 
@@ -16,7 +18,7 @@ interface ApiProduct {
   sellingPrice: number;
   originalPrice: number;
   images: string[];
-  category: { slug: string };
+category: { slug: string } | null; 
 }
 
 interface PopularProductsResponse {
@@ -35,6 +37,8 @@ const calcDiscount = (selling: number, original: number) =>
 const fetchPopularProducts = async (): Promise<PopularProductsResponse> => {
   // replace with your existing API client / endpoint
   const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/products/popular`);
+  console.log(res,'res');
+  
   if (!res.ok) throw new Error("Failed to fetch popular products");
   return res.json();
 };
@@ -52,7 +56,7 @@ const mapProducts = ({ data }: PopularProductsResponse): Product[] =>
       oldPrice: discount > 0 ? p.originalPrice : undefined,
       discount,
       image: p.images?.[0] ?? FALLBACK_IMAGE,
-      category: p.category.slug,
+     category: p.category?.slug ?? "",
       href: `/product/${p.slug}`,
     };
   });
@@ -66,21 +70,37 @@ const FILTERS = [
   { id: "relevance", label: "Relevance", category: null },
 ] as const;
 
+const GRID_CLASS =
+  "mt-6 grid grid-cols-1 gap-4 sm:mt-8 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3 xl:grid-cols-4 2xl:mt-[30px] 2xl:gap-6";
+
 interface PopularProductsProps {
   className?: string;
   products?: Product[];
+  /** Called after a product is added to the cart (e.g. open the cart drawer) */
+  onAddedToCart?: () => void;
 }
 
-const PopularProducts = ({ className, products: productsProp }: PopularProductsProps) => {
+const PopularProducts = ({
+  className,
+  products: productsProp,
+  onAddedToCart,
+}: PopularProductsProps) => {
   const [activeFilter, setActiveFilter] = useState<(typeof FILTERS)[number]["id"]>("all");
 
-  const { data: apiProducts, isLoading } = useQuery({
+  const {
+    data: apiProducts,
+    isLoading,
+    isError,
+  } = useQuery({
     queryKey: ["popular-products"],
     queryFn: fetchPopularProducts,
     select: mapProducts,
     staleTime: 5 * 60 * 1000,
-    enabled: !productsProp, // skip the request if products are passed in as a prop
+    enabled: !productsProp,
   });
+
+  // success / error toasts are handled inside the hook
+  const { mutate: addToCart, isPending: adding } = useAddToCart();
 
   const products = productsProp ?? apiProducts;
 
@@ -90,10 +110,20 @@ const PopularProducts = ({ className, products: productsProp }: PopularProductsP
     if (!filter?.category) return products;
     return products.filter((p) => p.category === filter.category);
   }, [activeFilter, products]);
+console.log(visibleProducts,'visible');
 
-  const handleAddToCart = useCallback((product: Product) => {
-    console.log("Add to cart:", product.id);
-  }, []);
+  const handleAddToCart = useCallback(
+    (product: Product) => {
+      if (adding) return; // ignore double clicks while a request is running
+      addToCart(
+        { productId: product.id, quantity: 1, name: product.title },
+        { onSuccess: onAddedToCart }
+      );
+    },
+    [adding, addToCart, onAddedToCart]
+  );
+
+  const showSkeleton = isLoading && !productsProp;
 
   return (
     <section
@@ -110,7 +140,7 @@ const PopularProducts = ({ className, products: productsProp }: PopularProductsP
           <div className="shrink-0">
             <p
               className={cn(
-                "-mb-1  font-semibold uppercase leading-none tracking-[0%] text-primary",
+                "-mb-1 font-semibold uppercase leading-none tracking-[0%] text-primary",
                 "text-[14px] sm:text-[16px] 2xl:text-[18px]"
               )}
             >
@@ -144,7 +174,7 @@ const PopularProducts = ({ className, products: productsProp }: PopularProductsP
                   aria-pressed={selected}
                   onClick={() => setActiveFilter(filter.id)}
                   className={cn(
-                    "shrink-0 whitespace-nowrap rounded-[22px] border  font-semibold capitalize leading-[100%] tracking-[0%] text-black transition-[box-shadow,background-color,border-color] duration-200",
+                    "shrink-0 whitespace-nowrap rounded-[22px] border font-semibold capitalize leading-[100%] tracking-[0%] text-black transition-[box-shadow,background-color,border-color] duration-200",
                     "px-3 py-2 text-[14px] sm:px-4 sm:py-2.5 sm:text-[16px] xl:px-5 xl:py-3 xl:text-[18px] 2xl:px-[30px] 2xl:py-4 2xl:text-[22px]",
                     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
                     selected
@@ -160,16 +190,33 @@ const PopularProducts = ({ className, products: productsProp }: PopularProductsP
         </div>
 
         {/* Cards */}
-        <ul className="mt-6 grid grid-cols-1 gap-4 sm:mt-8 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3 xl:grid-cols-4 2xl:mt-[30px] 2xl:gap-6">
-          {visibleProducts.map((product) => (
-            <li key={product.id}>
-              <ProductCard product={product} onAddToCart={handleAddToCart} />
-            </li>
-          ))}
-        </ul>
+        {showSkeleton ? (
+          <ul className={GRID_CLASS} aria-busy="true">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <li
+                key={i}
+                className="aspect-[3/4] w-full animate-pulse rounded-[20px] bg-gray-200"
+              />
+            ))}
+          </ul>
+        ) : (
+          <ul className={GRID_CLASS}>
+            {visibleProducts.map((product) => (
+              <li key={product.id}>
+                <ProductCard product={product} onAddToCart={handleAddToCart} />
+              </li>
+            ))}
+          </ul>
+        )}
 
-        {!isLoading && visibleProducts.length === 0 && (
-          <p className="mt-8 text-center  text-[16px] text-[#525252]">
+        {isError && (
+          <p role="alert" className="mt-8 text-center text-[16px] text-red-600">
+            Couldn&apos;t load products. Please try again later.
+          </p>
+        )}
+
+        {!showSkeleton && !isError && visibleProducts.length === 0 && (
+          <p className="mt-8 text-center text-[16px] text-[#525252]">
             No products found in this category.
           </p>
         )}

@@ -7,16 +7,17 @@ import { Button } from "@/src/components/ui/button";
 
 export interface Product {
   id: string;
+  slug?: string;
   title: string;
   compatibleFor: string;
   models: string;
   price: number;
   oldPrice?: number;
-  discount?: number;
-  image: StaticImageData | string;
-  imageAlt?: string;
-  href?: string;
+  discount: number;
+  image: string | StaticImageData;
   category?: string;
+  inStock?: boolean;
+  href?:string;
 }
 
 interface ProductCardProps {
@@ -28,8 +29,8 @@ interface ProductCardProps {
 const formatPrice = (value: number) => `AED. ${value.toFixed(2)}`;
 
 const ProductCard = ({ product, onAddToCart, className }: ProductCardProps) => {
-  const { id, title, compatibleFor, models, price, oldPrice, image, imageAlt } = product;
-console.log(id,'hhh');
+  const { id, title, compatibleFor, models, price, oldPrice, image } = product;
+
 
   // Every product opens its own detail page: /products/p1, /products/p2 ...
   const href = `/product/${id}`;
@@ -63,7 +64,7 @@ console.log(id,'hhh');
       <div className="relative aspect-[296/200] w-full">
         <Image
           src={image}
-          alt={imageAlt ?? title}
+          alt={ title}
           fill
           sizes="(min-width: 1536px) 296px, (min-width: 1024px) 25vw, (min-width: 640px) 50vw, 100vw"
           className="object-contain"

@@ -33,7 +33,8 @@ const data = {
       items: [
         { title: "Banner", url: "/admin/dashboard/home/banner" },
           { title: "Categories", url: "/admin/dashboard/home/categories" },
-     { title: "Products", url: "/admin/dashboard/home/product" },     
+     { title: "Products", url: "/admin/dashboard/home/product" }, 
+     { title: "Subscribers", url: "/admin/dashboard/home/subscribers" },     
     
         
 
@@ -43,40 +44,7 @@ const data = {
       ],
     },
 
-    {
-      title: "About",
-      icon: Rss,
-      items: [{ title: "About", url: "/admin/dashboard/about/" }],
-    },
-    {
-      title: "Services",
-      icon: Rss,
-      items: [{ title: "Services", url: "/admin/dashboard/services/" },],
-    },
-      {
-      title: "Clients",
-      icon: Rss,
-      items: [{ title: "Clients", url: "/admin/dashboard/client/" },],
-    },
-    {
-      title: "Contact",
-      icon: Contact,
-      items: [
-        { title: "Contact section", url: "/admin/dashboard/contact/" },
-      ],
-    },
-    {
-      title: "Sidebar",
-      icon: Contact,
-      items: [
-        { title: "Sidebar", url: "/admin/dashboard/sidebar/" },
-      ],
-    },
-    {
-      title: "Footer",
-      icon: Settings2,
-      items: [{ title: "Footer", url: "/admin/dashboard/footer/" }],
-    },
+   
   ],
 };
 

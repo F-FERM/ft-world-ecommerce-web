@@ -20,7 +20,7 @@ import {
 } from "@/src/components/ui/table";
 import api from "@/src/lib/axios";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus, Trash2, X } from "lucide-react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 import {
   memo,
   useCallback,
@@ -36,33 +36,45 @@ import {
 /*                                TYPES + API                                 */
 /* -------------------------------------------------------------------------- */
 
-export interface AccessoryCategory {
+export interface ParentCategory {
   _id: string;
   name: string;
-  imageUrl: string;
-  slug: string;
+  imageUrl?: string;
+  slug?: string;
 }
 
 export interface Category {
   _id: string;
   isDeleted: boolean;
   name: string;
-  description: string;
+  description?: string;
   isActive: boolean;
-  imageUrl: string;
+  imageUrl?: string;
   slug: string;
-  accessoryCategories: (string | AccessoryCategory)[]; // API returns IDs on create/update, but populated objects on GET
+  // null / missing = top-level. API may return an ID string or a populated object.
+  parentCategory?: string | ParentCategory | null;
   createdAt: string;
   updatedAt: string;
 }
 
+/** Shape sent to the API. Only name + slug are required. */
 export interface CategoryPayload {
   name: string;
+  slug: string;
+  description?: string;
+  isActive?: boolean;
+  imageUrl?: string;
+  parentCategory?: string | null;
+}
+
+/** Shape used by the form state ("" = not set). */
+interface CategoryFormValues {
+  name: string;
+  slug: string;
   description: string;
   isActive: boolean;
   imageUrl: string;
-  slug: string;
-  accessoryCategories: string[];
+  parentCategory: string;
 }
 
 interface ApiResponse<T> {
@@ -93,6 +105,10 @@ const getErrorMessage = (e: unknown, fallback = "Something went wrong") =>
   (e as Error)?.message ??
   fallback;
 
+/** Normalises parentCategory (null | id | populated object) to an id or "". */
+const getParentId = (p: Category["parentCategory"]): string =>
+  !p ? "" : typeof p === "string" ? p : p._id;
+
 /* -------------------------------------------------------------------------- */
 /*                                  CONSTANTS                                 */
 /* -------------------------------------------------------------------------- */
@@ -101,13 +117,13 @@ const QUERY_KEY = ["categoryList"] as const;
 const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB
 
-const EMPTY: CategoryPayload = {
+const EMPTY: CategoryFormValues = {
   name: "",
+  slug: "",
   description: "",
   isActive: true,
   imageUrl: "",
-  slug: "",
-  accessoryCategories: [],
+  parentCategory: "",
 };
 
 const inputClass =
@@ -132,13 +148,49 @@ const generateSlug = (name: string) =>
     .replace(/[^a-z0-9\s-]/g, "")
     .replace(/\s+/g, "-");
 
+/** Build the request body. Optional fields are omitted when empty. */
+function toPayload(v: CategoryFormValues, isEdit: boolean): CategoryPayload {
+  const payload: CategoryPayload = {
+    name: v.name.trim(),
+    slug: v.slug.trim(),
+    description: v.description.trim(),
+    isActive: v.isActive,
+  };
+
+  // imageUrl: omit on create when empty; on edit send "" so it can be cleared
+  if (v.imageUrl) payload.imageUrl = v.imageUrl;
+  else if (isEdit) payload.imageUrl = "";
+
+  // parentCategory: omit on create when empty; on edit send null so it can be cleared
+  if (v.parentCategory) payload.parentCategory = v.parentCategory;
+  else if (isEdit) payload.parentCategory = null;
+
+  return payload;
+}
+
+/** All descendant ids of a category (used to prevent circular parents). */
+function getDescendantIds(rootId: string, all: Category[]): Set<string> {
+  const result = new Set<string>();
+  const stack = [rootId];
+  while (stack.length) {
+    const current = stack.pop()!;
+    for (const c of all) {
+      if (getParentId(c.parentCategory) === current && !result.has(c._id)) {
+        result.add(c._id);
+        stack.push(c._id);
+      }
+    }
+  }
+  return result;
+}
+
 /* -------------------------------------------------------------------------- */
 /*                                 VALIDATION                                 */
 /* -------------------------------------------------------------------------- */
 
-type FormErrors = Partial<Record<keyof CategoryPayload, string>>;
+type FormErrors = Partial<Record<keyof CategoryFormValues, string>>;
 
-function validate(v: CategoryPayload): FormErrors {
+function validate(v: CategoryFormValues): FormErrors {
   const errors: FormErrors = {};
   const name = v.name.trim();
 
@@ -146,8 +198,6 @@ function validate(v: CategoryPayload): FormErrors {
   else if (name.length > 100)
     errors.name = "Name must be at most 100 characters";
 
-  if (!v.imageUrl) errors.imageUrl = "Please upload a category image";
-  
   if (!v.slug.trim()) errors.slug = "Slug is required";
 
   return errors;
@@ -213,7 +263,9 @@ function ImageUploader({
     onUploadingChange(true);
     try {
       const res = await fileUpload(file);
-      const url = res?.url ?? (res as unknown as { data?: { url?: string } })?.data?.url;
+      const url =
+        res?.url ??
+        (res as unknown as { data?: { url?: string } })?.data?.url;
       if (!url) throw new Error("Upload failed: no URL returned");
       onChange(url);
     } catch (err) {
@@ -227,7 +279,7 @@ function ImageUploader({
   const pick = () => inputRef.current?.click();
 
   return (
-    <Field label="Category Image" required error={error}>
+    <Field label="Category Image (Optional)" error={error}>
       <input
         ref={inputRef}
         type="file"
@@ -306,7 +358,7 @@ function CategoryForm({
   availableParents,
   onClose,
 }: {
-  initial: CategoryPayload;
+  initial: CategoryFormValues;
   categoryId?: string | null;
   availableParents: Category[];
   onClose: () => void;
@@ -314,35 +366,28 @@ function CategoryForm({
   const queryClient = useQueryClient();
   const isEdit = !!categoryId;
 
-  const [values, setValues] = useState<CategoryPayload>(initial);
+  const [values, setValues] = useState<CategoryFormValues>(initial);
   const [errors, setErrors] = useState<FormErrors>({});
   const [uploading, setUploading] = useState(false);
 
   const setField = useCallback(
-    <K extends keyof CategoryPayload>(key: K, value: CategoryPayload[K]) => {
+    <K extends keyof CategoryFormValues>(
+      key: K,
+      value: CategoryFormValues[K],
+    ) => {
       setValues((prev) => ({ ...prev, [key]: value }));
       setErrors((prev) => ({ ...prev, [key]: undefined }));
     },
     [],
   );
 
-  // Auto-generate slug when name changes (only if not editing or if slug is empty)
+  // Auto-generate slug when name changes (only if creating, or slug still matches the old name)
   const handleNameChange = (e: ChangeEvent<HTMLInputElement>) => {
     const newName = e.target.value;
     setField("name", newName);
     if (!isEdit || values.slug === generateSlug(values.name)) {
-       setField("slug", generateSlug(newName));
+      setField("slug", generateSlug(newName));
     }
-  };
-
-  const toggleAccessory = (id: string) => {
-    setValues((prev) => {
-      const current = prev.accessoryCategories;
-      const updated = current.includes(id)
-        ? current.filter((x) => x !== id)
-        : [...current, id];
-      return { ...prev, accessoryCategories: updated };
-    });
   };
 
   const { mutate, isPending, error: apiError } = useMutation({
@@ -353,7 +398,9 @@ function CategoryForm({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEY });
       if (categoryId)
-        queryClient.invalidateQueries({ queryKey: ["categoryById", categoryId] });
+        queryClient.invalidateQueries({
+          queryKey: ["categoryById", categoryId],
+        });
       onClose();
     },
   });
@@ -364,16 +411,16 @@ function CategoryForm({
     setErrors(errs);
     if (Object.keys(errs).length) return;
 
-    mutate({
-      ...values,
-      name: values.name.trim(),
-      description: values.description.trim(),
-      slug: values.slug.trim(),
-    });
+    mutate(toPayload(values, isEdit));
   };
 
-  // Filter out the current category from available parents (cannot be its own parent)
-  const parentOptions = availableParents.filter((c) => c._id !== categoryId);
+  // A category can't be its own parent, nor a child of its own descendants
+  const parentOptions = useMemo(() => {
+    if (!categoryId) return availableParents;
+    const blocked = getDescendantIds(categoryId, availableParents);
+    blocked.add(categoryId);
+    return availableParents.filter((c) => !blocked.has(c._id));
+  }, [availableParents, categoryId]);
 
   return (
     <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-4">
@@ -405,7 +452,7 @@ function CategoryForm({
         onUploadingChange={setUploading}
       />
 
-      <Field label="Description" htmlFor="description">
+      <Field label="Description (Optional)" htmlFor="description">
         <textarea
           id="description"
           rows={3}
@@ -414,6 +461,22 @@ function CategoryForm({
           value={values.description}
           onChange={(e) => setField("description", e.target.value)}
         />
+      </Field>
+
+      <Field label="Parent Category (Optional)" htmlFor="parentCategory">
+        <select
+          id="parentCategory"
+          className={inputClass}
+          value={values.parentCategory}
+          onChange={(e) => setField("parentCategory", e.target.value)}
+        >
+          <option value="">None (top-level category)</option>
+          {parentOptions.map((cat) => (
+            <option key={cat._id} value={cat._id}>
+              {cat.name}
+            </option>
+          ))}
+        </select>
       </Field>
 
       <Field label="Status" htmlFor="isActive">
@@ -426,65 +489,6 @@ function CategoryForm({
           <option value="true">Active</option>
           <option value="false">Inactive</option>
         </select>
-      </Field>
-
-      {/* Accessory Categories Selector */}
-      <Field label="Parent Categories (Optional)">
-        <div className="max-h-40 overflow-y-auto rounded-md border border-[#D5D5D5] bg-white p-2">
-          {parentOptions.length === 0 ? (
-            <p className="text-[12px] text-gray-500">No parent categories available.</p>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {parentOptions.map((cat) => {
-                const isSelected = values.accessoryCategories.includes(cat._id);
-                return (
-                  <label
-                    key={cat._id}
-                    className="flex cursor-pointer items-center gap-2 text-[13px]"
-                  >
-                    <input
-                      type="checkbox"
-                      className="size-4 rounded border-gray-300 text-black focus:ring-black"
-                      checked={isSelected}
-                      onChange={() => toggleAccessory(cat._id)}
-                    />
-                    <img
-                      src={cat.imageUrl}
-                      alt={cat.name}
-                      className="h-6 w-6 rounded object-cover"
-                    />
-                    {cat.name}
-                  </label>
-                );
-              })}
-            </div>
-          )}
-        </div>
-        
-        {/* Display selected accessories as pills */}
-        {values.accessoryCategories.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-2">
-            {values.accessoryCategories.map((id) => {
-              const cat = availableParents.find((c) => c._id === id);
-              if (!cat) return null;
-              return (
-                <span
-                  key={id}
-                  className="inline-flex items-center gap-1 rounded-full bg-black px-2 py-1 text-[11px] text-white"
-                >
-                  {cat.name}
-                  <button
-                    type="button"
-                    onClick={() => toggleAccessory(id)}
-                    className="rounded-full p-0.5 hover:bg-white/20"
-                  >
-                    <X className="size-3" />
-                  </button>
-                </span>
-              );
-            })}
-          </div>
-        )}
       </Field>
 
       {apiError && (
@@ -532,23 +536,17 @@ function CategoryDialog({
     enabled: open && isEdit,
   });
 
-  const initial = useMemo<CategoryPayload>(() => {
+  const initial = useMemo<CategoryFormValues>(() => {
     const c = data?.data;
     if (!c) return EMPTY;
-    
-    // The API may return accessoryCategories as an array of IDs (strings) 
-    // or as populated objects. We normalize them to just IDs for the form state.
-    const accIds = c.accessoryCategories.map((acc) =>
-      typeof acc === "string" ? acc : acc._id
-    );
 
     return {
       name: c.name ?? "",
+      slug: c.slug ?? "",
       description: c.description ?? "",
       isActive: c.isActive,
       imageUrl: c.imageUrl ?? "",
-      slug: c.slug ?? "",
-      accessoryCategories: accIds,
+      parentCategory: getParentId(c.parentCategory),
     };
   }, [data]);
 
@@ -658,39 +656,45 @@ function DeleteDialog({
 
 const CategoryRow = memo(function CategoryRow({
   category: c,
+  parentName,
   onEdit,
   onDelete,
 }: {
   category: Category;
+  parentName: string;
   onEdit: (id: string) => void;
   onDelete: (category: Category) => void;
 }) {
-  // Render parent names
-  const parentNames = c.accessoryCategories
-    .map((acc) => (typeof acc === "string" ? acc : acc.name))
-    .join(", ");
-
   return (
     <TableRow>
       <TableCell>
-        <img
-          src={c.imageUrl}
-          alt={c.name}
-          loading="lazy"
-          className="h-10 w-16 rounded border border-[#D5D5D5] object-cover"
-        />
+        {c.imageUrl ? (
+          <img
+            src={c.imageUrl}
+            alt={c.name}
+            loading="lazy"
+            className="h-10 w-16 rounded border border-[#D5D5D5] object-cover"
+          />
+        ) : (
+          <div className="flex h-10 w-16 items-center justify-center rounded border border-[#D5D5D5] bg-gray-100 text-xs text-gray-400">
+            No img
+          </div>
+        )}
       </TableCell>
       <TableCell className="max-w-[150px] truncate font-medium" title={c.name}>
         {c.name}
       </TableCell>
-      <TableCell className="max-w-[150px] truncate text-gray-500" title={c.slug}>
+      <TableCell
+        className="max-w-[150px] truncate text-gray-500"
+        title={c.slug}
+      >
         {c.slug}
       </TableCell>
       <TableCell className="max-w-[200px] truncate" title={c.description}>
         {c.description || "-"}
       </TableCell>
-      <TableCell className="max-w-[200px] truncate" title={parentNames}>
-        {parentNames || "-"}
+      <TableCell className="max-w-[200px] truncate" title={parentName}>
+        {parentName || "-"}
       </TableCell>
       <TableCell>
         <span
@@ -741,7 +745,9 @@ export default function CategorySettings() {
     open: boolean;
     id: string | null;
   }>({ open: false, id: null });
-  const [categoryToDelete, setCategoryToDelete] = useState<Category | null>(null);
+  const [categoryToDelete, setCategoryToDelete] = useState<Category | null>(
+    null,
+  );
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: QUERY_KEY,
@@ -753,8 +759,26 @@ export default function CategorySettings() {
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   const safePage = Math.min(page, totalPages);
 
+  // id -> name lookup so we can show the parent's name even when the API returns only an ID
+  const nameById = useMemo(() => {
+    const map = new Map<string, string>();
+    (categories ?? []).forEach((c) => map.set(c._id, c.name));
+    return map;
+  }, [categories]);
+
+  const getParentName = useCallback(
+    (c: Category) => {
+      const p = c.parentCategory;
+      if (!p) return "";
+      if (typeof p !== "string") return p.name;
+      return nameById.get(p) ?? "";
+    },
+    [nameById],
+  );
+
   const paged = useMemo(
-    () => (categories ?? []).slice((safePage - 1) * pageSize, safePage * pageSize),
+    () =>
+      (categories ?? []).slice((safePage - 1) * pageSize, safePage * pageSize),
     [categories, safePage, pageSize],
   );
 
@@ -798,7 +822,7 @@ export default function CategorySettings() {
                 "Name",
                 "Slug",
                 "Description",
-                "Parent Categories",
+                "Parent Category",
                 "Status",
                 "Created Date",
                 "Actions",
@@ -821,6 +845,7 @@ export default function CategorySettings() {
                 <CategoryRow
                   key={c._id}
                   category={c}
+                  parentName={getParentName(c)}
                   onEdit={openEdit}
                   onDelete={setCategoryToDelete}
                 />

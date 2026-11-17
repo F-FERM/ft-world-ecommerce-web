@@ -1,5 +1,6 @@
 import { cache } from "react";
 import type { Product } from "@/src/components/common/ProductCard"; // adjust path
+import { StaticImageData } from "next/image";
 
 const API_URL = process.env.NEXT_PUBLIC_BASE_URL;
 const FALLBACK_IMAGE = "/products/placeholder.png";
@@ -48,7 +49,21 @@ export interface ProductDetail {
   metaTitle?: string;
   metaDescription?: string;
 }
+export interface BundleItem {
+  id: string;
+  productId: string; // _id sent to /cart/add-bundle
+  title: string;
+  price: number;
+  oldPrice: number;
+  image?: StaticImageData | string;
+  inStock: boolean;
+}
 
+
+interface ProductsResponse {
+  success: boolean;
+  data: ApiProduct[];
+}
 /* ------------------------------- helpers ------------------------------- */
 
 export const calcDiscount = (selling: number, original: number) =>
@@ -130,3 +145,22 @@ export const getRelatedProducts = cache(async (idOrSlug: string): Promise<Produc
     return []; // a related-products failure should never break the page
   }
 });
+
+const BUNDLE_LIMIT = 4;
+
+export async function getBundleProducts(): Promise<BundleItem[]> {
+  const res = await fetch(`${API_URL}/products`, { next: { revalidate: 60 } });
+  if (!res.ok) throw new Error(`Failed to fetch products (${res.status})`);
+
+  const json: ProductsResponse = await res.json();
+
+  return (json.data ?? []).slice(0, BUNDLE_LIMIT).map((p) => ({
+    id: p._id,
+    productId: p._id,
+    title: p.name,
+    price: p.sellingPrice,
+    oldPrice: p.originalPrice,
+    image: p.images?.[0],
+    inStock: p.stock > 0,
+  }));
+}

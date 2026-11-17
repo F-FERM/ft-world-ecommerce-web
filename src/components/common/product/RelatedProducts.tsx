@@ -1,5 +1,5 @@
 import { getRelatedProducts } from "@/src/api/products";
-import ProductCard from "../ProductCard";
+import RelatedProductsClient from "./RelatedProductsClient";
 
 const HEADING =
   "text-[32px] font-semibold capitalize leading-[1.2] text-black sm:text-[42px] 2xl:text-[55px] 2xl:leading-[70px]";
@@ -20,13 +20,7 @@ export default async function RelatedProducts({ idOrSlug }: { idOrSlug: string }
         You May Also Like
       </h2>
 
-      <ul className={LIST_CLASSES}>
-        {products.map((p) => (
-          <li key={p.id} className={ITEM_CLASSES}>
-            <ProductCard product={p} />
-          </li>
-        ))}
-      </ul>
+      <RelatedProductsClient products={products} itemClasses={ITEM_CLASSES} listClasses={LIST_CLASSES} />
     </section>
   );
 }
