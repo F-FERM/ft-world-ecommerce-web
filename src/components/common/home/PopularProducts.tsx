@@ -1,105 +1,63 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/src/lib/utils";
-import BlackTonerCartridge from "../../../../public/products/blacktonercartridge.png";
-import PaperFeedRoller from "../../../../public/products/paperfeedroller.png";
-import CyanTonerCartridge from "../../../../public/products/cyantonercartridge.png";
-import PCR from "../../../../public/products/pcr.png";
-import MagentaTonerCartridge from "../../../../public/products/magentatonercartridge.png";
-import TransferBelt from "../../../../public/products/transferbelt.png";
 import ProductCard, { Product } from "../ProductCard";
 
-const PRODUCTS: Product[] = [
-  {
-    id: "p1",
-    title: "Black Toner Cartiage",
-    compatibleFor: "Compatible For Canon IR:",
-    models: "4525i/ 4535i/ 4545i 4725 (CEXV53)",
-    price: 105,
-    oldPrice: 120,
-    discount: 5,
-    image: BlackTonerCartridge,
-    category: "toner-cartridge",
-  },
-  {
-    id: "p2",
-    title: "Papper Feed Roller",
-    compatibleFor: "Compatible For Canon :",
-    models: "5235/ 2525",
-    price: 10,
-    oldPrice: 15,
-    discount: 5,
-    image: PaperFeedRoller,
-    category: "accessories",
-  },
-  {
-    id: "p3",
-    title: "Cyan Toner Cartiage",
-    compatibleFor: "Compatible For Canon IR:",
-    models: "250i/ 255/ 350i/ 351fi (NPG-65)",
-    price: 96.43,
-    oldPrice: 100,
-    discount: 5,
-    image: CyanTonerCartridge,
-    category: "multicolor-toner",
-  },
-  {
-    id: "p4",
-    title: "Black Toner Cartiage",
-    compatibleFor: "Compatible For Canon IR:",
-    models: "250i/ 255/ 350i/ 351fi (NPG-65)",
-    price: 96.43,
-    oldPrice: 100,
-    discount: 5,
-    image: BlackTonerCartridge,
-    category: "toner-cartridge",
-  },
-  {
-    id: "p5",
-    title: "PCR (Highyield)",
-    compatibleFor: "Compatible For Canon IRC:",
-    models: "5535/ 5560/ 5550/ 5540/ 5750",
-    price: 35,
-    oldPrice: 40,
-    discount: 5,
-    image: PCR,
-    category: "accessories",
-  },
-  {
-    id: "p6",
-    title: "Magenta Toner Cartiage",
-    compatibleFor: "Compatible For Canon IRC:",
-    models: "250i/ 255/ 350i/ 351fi (NPG-65)",
-    price: 96.43,
-    oldPrice: 100,
-    discount: 5,
-    image: MagentaTonerCartridge,
-    category: "multicolor-toner",
-  },
-  {
-    id: "p7",
-    title: "Black Toner Cartiage",
-    compatibleFor: "Compatible For Canon IR:",
-    models: "4525i/ 4535i/ 4545i 4725 (CEXV53)",
-    price: 105,
-    oldPrice: 120,
-    discount: 5,
-    image: BlackTonerCartridge,
-    category: "toner-cartridge",
-  },
-  {
-    id: "p8",
-    title: "Transfer Belt",
-    compatibleFor: "Compatible For Canon :",
-    models: "3525/ 3530/ G65",
-    price: 8.57,
-    oldPrice: 12.57,
-    discount: 5,
-    image: TransferBelt,
-    category: "accessories",
-  },
-];
+/* ----------------------------- API types ----------------------------- */
+
+interface ApiProduct {
+  _id: string;
+  name: string;
+  slug: string;
+  compatibleDescription: string;
+  compatibleValues: string;
+  sellingPrice: number;
+  originalPrice: number;
+  images: string[];
+  category: { slug: string };
+}
+
+interface PopularProductsResponse {
+  data: { products: ApiProduct[] };
+}
+
+/* ------------------- fetch + discount + mapper (once) ------------------- */
+
+const FALLBACK_IMAGE = "/products/placeholder.png";
+
+const calcDiscount = (selling: number, original: number) =>
+  original > 0 && original > selling
+    ? Math.round(((original - selling) / original) * 100)
+    : 0;
+
+const fetchPopularProducts = async (): Promise<PopularProductsResponse> => {
+  // replace with your existing API client / endpoint
+  const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/products/popular`);
+  if (!res.ok) throw new Error("Failed to fetch popular products");
+  return res.json();
+};
+
+// Outside the component => stable reference, runs only when new data arrives
+const mapProducts = ({ data }: PopularProductsResponse): Product[] =>
+  data.products.map((p) => {
+    const discount = calcDiscount(p.sellingPrice, p.originalPrice);
+    return {
+      id: p._id,
+      title: p.name,
+      compatibleFor: p.compatibleDescription,
+      models: p.compatibleValues,
+      price: p.sellingPrice,
+      oldPrice: discount > 0 ? p.originalPrice : undefined,
+      discount,
+      image: p.images?.[0] ?? FALLBACK_IMAGE,
+      category: p.category.slug,
+      href: `/product/${p.slug}`,
+    };
+  });
+
+/* ------------------------------ filters ------------------------------ */
 
 const FILTERS = [
   { id: "all", label: "All", category: null },
@@ -113,18 +71,29 @@ interface PopularProductsProps {
   products?: Product[];
 }
 
-const PopularProducts = ({ className, products = PRODUCTS }: PopularProductsProps) => {
+const PopularProducts = ({ className, products: productsProp }: PopularProductsProps) => {
   const [activeFilter, setActiveFilter] = useState<(typeof FILTERS)[number]["id"]>("all");
 
+  const { data: apiProducts, isLoading } = useQuery({
+    queryKey: ["popular-products"],
+    queryFn: fetchPopularProducts,
+    select: mapProducts,
+    staleTime: 5 * 60 * 1000,
+    enabled: !productsProp, // skip the request if products are passed in as a prop
+  });
+
+  const products = productsProp ?? apiProducts;
+
   const visibleProducts = useMemo(() => {
+    if (!products) return [];
     const filter = FILTERS.find((f) => f.id === activeFilter);
     if (!filter?.category) return products;
     return products.filter((p) => p.category === filter.category);
   }, [activeFilter, products]);
 
-  const handleAddToCart = (product: Product) => {
+  const handleAddToCart = useCallback((product: Product) => {
     console.log("Add to cart:", product.id);
-  };
+  }, []);
 
   return (
     <section
@@ -135,60 +104,60 @@ const PopularProducts = ({ className, products = PRODUCTS }: PopularProductsProp
       )}
     >
       <div className="mx-auto w-full max-w-[1464px]">
-      {/* Heading + filters */}
-<div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between lg:gap-8">
-  {/* Title block */}
-  <div className="shrink-0">
-  <p
-  className={cn(
-    "-mb-1  font-semibold uppercase leading-none tracking-[0%] text-primary",
-    "text-[14px] sm:text-[16px] 2xl:text-[18px]"
-  )}
->
-  Discover Your Essentials
-</p>
-   <h2
-  className={cn(
-    "mt-1 font-semibold capitalize leading-[100%] tracking-[0%] text-black sm:mt-1.5 2xl:mt-2",
-    "text-[28px] sm:text-[36px] md:text-[42px] xl:text-[48px] 2xl:text-[55px]"
-  )}
->
-  Popular Products
-</h2>
-  </div>
+        {/* Heading + filters */}
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between lg:gap-8">
+          {/* Title block */}
+          <div className="shrink-0">
+            <p
+              className={cn(
+                "-mb-1  font-semibold uppercase leading-none tracking-[0%] text-primary",
+                "text-[14px] sm:text-[16px] 2xl:text-[18px]"
+              )}
+            >
+              Discover Your Essentials
+            </p>
+            <h2
+              className={cn(
+                "mt-1 font-semibold capitalize leading-[100%] tracking-[0%] text-black sm:mt-1.5 2xl:mt-2",
+                "text-[28px] sm:text-[36px] md:text-[42px] xl:text-[48px] 2xl:text-[55px]"
+              )}
+            >
+              Popular Products
+            </h2>
+          </div>
 
-  {/* Filter tabs: the selected one gets the rounded border + shadow */}
-  <div
-    role="group"
-    aria-label="Filter products"
-    className={cn(
-      "-mx-4 flex min-w-0 items-center gap-1 overflow-x-auto px-4 pb-2 sm:mx-0 sm:px-0 lg:gap-2 lg:overflow-visible lg:pb-0",
-      "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-    )}
-  >
-    {FILTERS.map((filter) => {
-      const selected = filter.id === activeFilter;
-      return (
-        <button
-          key={filter.id}
-          type="button"
-          aria-pressed={selected}
-          onClick={() => setActiveFilter(filter.id)}
-          className={cn(
-            "shrink-0 whitespace-nowrap rounded-[22px] border  font-semibold capitalize leading-[100%] tracking-[0%] text-black transition-[box-shadow,background-color,border-color] duration-200",
-            "px-3 py-2 text-[14px] sm:px-4 sm:py-2.5 sm:text-[16px] xl:px-5 xl:py-3 xl:text-[18px] 2xl:px-[30px] 2xl:py-4 2xl:text-[22px]",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
-            selected
-              ? "border-[#B8B8B8] bg-white shadow-[0_0_4px_0_#00000040]"
-              : "border-transparent bg-transparent hover:border-[#B8B8B8]/60"
-          )}
-        >
-          {filter.label}
-        </button>
-      );
-    })}
-  </div>
-</div>
+          {/* Filter tabs: the selected one gets the rounded border + shadow */}
+          <div
+            role="group"
+            aria-label="Filter products"
+            className={cn(
+              "-mx-4 flex min-w-0 items-center gap-1 overflow-x-auto px-4 pb-2 sm:mx-0 sm:px-0 lg:gap-2 lg:overflow-visible lg:pb-0",
+              "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            )}
+          >
+            {FILTERS.map((filter) => {
+              const selected = filter.id === activeFilter;
+              return (
+                <button
+                  key={filter.id}
+                  type="button"
+                  aria-pressed={selected}
+                  onClick={() => setActiveFilter(filter.id)}
+                  className={cn(
+                    "shrink-0 whitespace-nowrap rounded-[22px] border  font-semibold capitalize leading-[100%] tracking-[0%] text-black transition-[box-shadow,background-color,border-color] duration-200",
+                    "px-3 py-2 text-[14px] sm:px-4 sm:py-2.5 sm:text-[16px] xl:px-5 xl:py-3 xl:text-[18px] 2xl:px-[30px] 2xl:py-4 2xl:text-[22px]",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+                    selected
+                      ? "border-[#B8B8B8] bg-white shadow-[0_0_4px_0_#00000040]"
+                      : "border-transparent bg-transparent hover:border-[#B8B8B8]/60"
+                  )}
+                >
+                  {filter.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
         {/* Cards */}
         <ul className="mt-6 grid grid-cols-1 gap-4 sm:mt-8 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3 xl:grid-cols-4 2xl:mt-[30px] 2xl:gap-6">
@@ -199,7 +168,7 @@ const PopularProducts = ({ className, products = PRODUCTS }: PopularProductsProp
           ))}
         </ul>
 
-        {visibleProducts.length === 0 && (
+        {!isLoading && visibleProducts.length === 0 && (
           <p className="mt-8 text-center  text-[16px] text-[#525252]">
             No products found in this category.
           </p>

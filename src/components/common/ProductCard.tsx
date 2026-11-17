@@ -29,9 +29,10 @@ const formatPrice = (value: number) => `AED. ${value.toFixed(2)}`;
 
 const ProductCard = ({ product, onAddToCart, className }: ProductCardProps) => {
   const { id, title, compatibleFor, models, price, oldPrice, image, imageAlt } = product;
+console.log(id,'hhh');
 
   // Every product opens its own detail page: /products/p1, /products/p2 ...
-  const href = product.href ?? `/product/${id}`;
+  const href = `/product/${id}`;
 
   const discount =
     product.discount ??

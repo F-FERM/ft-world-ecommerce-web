@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 import { Poppins } from "next/font/google";
 import { Toaster } from "sonner";
+import { Suspense } from "react";
 import "./globals.css";
 import Providers from "./providers";
-import Navbar from "../components/common/layout/Navbar";
-import Footer from "../components/common/layout/Footer";
+import ConditionalLayout from "../components/common/layout/ConditionalLayout";
 
 
 const poppins = Poppins({
@@ -31,9 +31,12 @@ export default function RootLayout({
     <html lang="en" className={poppins.variable}>
       <body className="antialiased font-sans">
         <Providers>
-          <Navbar/>
-          {children} <Toaster richColors />
-          <Footer/>
+          <Suspense>
+            <ConditionalLayout>
+              {children}
+              <Toaster richColors />
+            </ConditionalLayout>
+          </Suspense>
         </Providers>
       </body>
     </html>

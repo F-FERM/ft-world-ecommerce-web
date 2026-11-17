@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import Image, { type StaticImageData } from "next/image";
+import Image from "next/image";
 import { cn } from "@/src/lib/utils";
 
-export default function ProductGallery({ images, alt }: { images: StaticImageData[]; alt: string }) {
+export default function ProductGallery({ images, alt }: { images: string[]; alt: string }) {
   const [active, setActive] = useState(0);
 
   return (
@@ -12,7 +12,7 @@ export default function ProductGallery({ images, alt }: { images: StaticImageDat
       {/* Main image: 722 x 477, radius 20, border #AAAAAA */}
       <div className="relative aspect-[722/477] w-full overflow-hidden rounded-[20px] border border-[#AAAAAA] bg-white">
         <Image
-          src={images[active]}
+          src={images[active] ?? images[0]}
           alt={alt}
           fill
           priority
@@ -23,9 +23,9 @@ export default function ProductGallery({ images, alt }: { images: StaticImageDat
 
       {/* Thumbnails: 230 x 152 */}
       <div className="grid grid-cols-3 gap-3 sm:gap-4">
-        {images.slice(0, 3).map((img, i) => (
+        {images.slice(0, 3).map((src, i) => (
           <button
-            key={i}
+            key={`${src}-${i}`}
             type="button"
             onClick={() => setActive(i)}
             aria-label={`Show image ${i + 1}`}
@@ -36,7 +36,13 @@ export default function ProductGallery({ images, alt }: { images: StaticImageDat
               i === active ? "border-2 border-[#542452]" : "border-[#AAAAAA]"
             )}
           >
-            <Image src={img} alt="" fill sizes="230px" className="object-contain p-2" />
+            <Image
+              src={src}
+              alt=""
+              fill
+              sizes="(min-width: 1536px) 230px, 33vw"
+              className="object-contain p-2"
+            />
           </button>
         ))}
       </div>
