@@ -1,7 +1,12 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { Send } from "lucide-react";
+import { Loader2, Send } from "lucide-react";
+import { toast } from "sonner";
 import { cn } from "@/src/lib/utils";
+import { subscribeToNewsletter } from "@/src/api/newsletter";
 import LogoWatermark from "../../../../public/images/ftworldfooterlogo.png";
 import Email from "../../../../public/icons/email.png";
 
@@ -77,6 +82,34 @@ interface FooterProps {
 }
 
 const Footer = ({ className }: FooterProps) => {
+  const [email, setEmail] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSubscribe = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const trimmed = email.trim();
+    if (!trimmed) {
+      toast.error("Please enter your email address.");
+      return;
+    }
+
+    if (!/^\S+@\S+\.\S+$/.test(trimmed)) {
+      toast.error("Please enter a valid email address.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const res = await subscribeToNewsletter({ email: trimmed });
+      setEmail("");
+      toast.success(res?.message || "Thanks for subscribing to our newsletter!");
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to subscribe. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <footer
       data-slot="footer"
@@ -154,7 +187,7 @@ const Footer = ({ className }: FooterProps) => {
 
           <form
             className="mt-4 flex w-full max-w-[425px] gap-2 2xl:mt-5"
-            action="#"
+            onSubmit={handleSubscribe}
           >
             <label htmlFor="footer-email" className="sr-only">
               Email address
@@ -163,25 +196,35 @@ const Footer = ({ className }: FooterProps) => {
               id="footer-email"
               type="email"
               name="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              disabled={isSubmitting}
               required
               autoComplete="email"
               placeholder="Your Email Address"
               className={cn(
                 "h-[43px] min-w-0 flex-1 rounded-[8px] border border-[#542452] bg-[#D9D9D9] px-[17px] py-[3px]",
                 "text-[16px] font-normal leading-[35px] text-black placeholder:text-[#6E6E6E] sm:text-[18px]",
-                "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white",
+                "disabled:opacity-60"
               )}
               style={{ fontFamily: "var(--font-inter), Inter, sans-serif" }}
             />
             <button
               type="submit"
+              disabled={isSubmitting}
               aria-label="Subscribe"
               className={cn(
                 "grid h-[43px] w-[63px] shrink-0 place-items-center rounded-[10px] bg-[#542452] px-3 py-[9px] text-white",
-                "transition hover:brightness-125 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                "transition hover:brightness-125 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white",
+                "disabled:cursor-not-allowed disabled:opacity-60"
               )}
             >
-              <Send className="size-6" strokeWidth={1.6} aria-hidden="true" />
+              {isSubmitting ? (
+                <Loader2 className="size-5 animate-spin" strokeWidth={2} aria-hidden="true" />
+              ) : (
+                <Send className="size-6" strokeWidth={1.6} aria-hidden="true" />
+              )}
             </button>
           </form>
 

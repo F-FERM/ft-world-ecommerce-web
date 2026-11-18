@@ -1,23 +1,29 @@
-const API_BASE = process.env.NEXT_PUBLIC_BASE_URL;
+import axiosInstance from "@/src/service/axios";
 
 export interface SubscribePayload {
   email: string;
 }
 
-export async function subscribeToNewsletter(payload: SubscribePayload) {
-  const res = await fetch(`${API_BASE}/newsletter/subscribe`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
+export interface SubscribeResponse {
+  success: boolean;
+  message?: string;
+  data?: any;
+}
 
-  const json = await res.json().catch(() => null);
-
-  if (!res.ok || json?.success === false) {
-    // Nest validation errors can return message as an array
-    const message = Array.isArray(json?.message) ? json.message[0] : json?.message;
-    throw new Error(message ?? `Subscription failed (${res.status})`);
+export async function subscribeToNewsletter(
+  payload: SubscribePayload
+): Promise<SubscribeResponse> {
+  try {
+    const res = await axiosInstance.post<SubscribeResponse>(
+      "/newsletter/subscribe",
+      payload
+    );
+    return res.data;
+  } catch (error: any) {
+    const data = error?.response?.data;
+    const message = Array.isArray(data?.message)
+      ? data.message[0]
+      : data?.message || error?.message || "Subscription failed";
+    throw new Error(message);
   }
-
-  return json;
 }

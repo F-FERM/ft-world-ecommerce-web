@@ -5,6 +5,7 @@ const nextConfig: NextConfig = {
   experimental: {
     agentFeedback: true,
   },
+  
   images: {
   remotePatterns: [
     { protocol: "https", hostname: "blr1.digitaloceanspaces.com" },
