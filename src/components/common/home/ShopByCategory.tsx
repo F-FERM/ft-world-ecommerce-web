@@ -129,55 +129,61 @@ const ShopByCategory = ({ className }: ShopByCategoryProps) => {
           </ul>
         ) : (
           <ul className={GRID_CLASS}>
-            {visibleCategories.map((category) => (
-              <li key={category._id}>
-                <Link
-                  href={`/shop/${category.slug}`}
-                  className={cn(
-                    "group relative isolate flex aspect-[355/209] w-full flex-col justify-between overflow-hidden",
-                    "rounded-[30px] bg-[#9B4A97] p-5 sm:p-[30px]",
-                    "shadow-[0_0_4px_0_#00000040]",
-                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
-                  )}
-                >
-                  {category.imageUrl && (
-                    <>
-                      <Image
-                        src={category.imageUrl}
-                        alt=""
-                        aria-hidden="true"
-                        fill
-                        sizes="(min-width: 1536px) 355px, (min-width: 1280px) 25vw, (min-width: 640px) 50vw, 100vw"
-                        className="-z-20 object-cover transition-transform duration-500 group-hover:scale-105 motion-reduce:transition-none"
-                      />
-                      <div
-                        aria-hidden="true"
-                        className="absolute inset-0 -z-10 bg-[linear-gradient(180deg,rgba(0,0,0,0)_0%,rgba(0,0,0,0.7)_100%)]"
-                      />
-                    </>
-                  )}
+           {visibleCategories.map((category) => {
+  const hasImage = Boolean(category.imageUrl);
 
-                  <span
-                    aria-hidden="true"
-                    className={cn(
-                      "flex size-9 items-center justify-center self-end rounded-full bg-[#6E2D6B] p-[10px] text-white sm:size-[42px]",
-                      "transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 motion-reduce:transition-none"
-                    )}
-                  >
-                    <ArrowUpRight className="size-full" strokeWidth={1.75} />
-                  </span>
+  return (
+    <li key={category._id}>
+      <Link
+        href={`/shop/${category.slug}`}
+        className={cn(
+          "group relative isolate flex aspect-[355/209] w-full flex-col justify-between overflow-hidden",
+          "rounded-[30px] bg-[#D9D9D9] p-5 sm:p-[30px]",
+          "shadow-[0_0_4px_0_#00000040]",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+        )}
+      >
+        {hasImage && (
+          <>
+            <Image
+              src={category.imageUrl}
+              alt=""
+              aria-hidden="true"
+              fill
+              sizes="(min-width: 1536px) 355px, (min-width: 1280px) 25vw, (min-width: 640px) 50vw, 100vw"
+              className="-z-20 object-cover transition-transform duration-500 group-hover:scale-105 motion-reduce:transition-none"
+            />
+            <div
+              aria-hidden="true"
+              className="absolute inset-0 -z-10 bg-[linear-gradient(180deg,rgba(0,0,0,0)_0%,rgba(0,0,0,0.7)_100%)]"
+            />
+          </>
+        )}
 
-                  <span
-                    className={cn(
-                      "line-clamp-2 pr-2 font-semibold capitalize leading-[100%] tracking-[0%] text-white",
-                      "text-[20px] sm:text-[22px] 2xl:text-[26px]"
-                    )}
-                  >
-                    {category.name}
-                  </span>
-                </Link>
-              </li>
-            ))}
+        <span
+          aria-hidden="true"
+          className={cn(
+            "flex size-9 items-center justify-center self-end rounded-full p-[10px] text-white sm:size-[42px]",
+            hasImage ? "bg-[#6E2D6B]" : "bg-[#AFAFAF]",
+            "transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 motion-reduce:transition-none"
+          )}
+        >
+          <ArrowUpRight className="size-full" strokeWidth={1.75} />
+        </span>
+
+        <span
+          className={cn(
+            "line-clamp-2 pr-2 font-semibold capitalize leading-[100%] tracking-[0%]",
+            "text-[20px] sm:text-[22px] 2xl:text-[26px]",
+            hasImage ? "text-white" : "text-black"
+          )}
+        >
+          {category.name}
+        </span>
+      </Link>
+    </li>
+  );
+})}
           </ul>
         )}
       </div>
