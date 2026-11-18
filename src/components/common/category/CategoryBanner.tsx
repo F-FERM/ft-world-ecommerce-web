@@ -26,8 +26,8 @@ interface CategoryBannerProps {
   parentCategory?: string;
   category?: string;
   title?: string;
-  image?: StaticImageData;
-  imageAlt?: string;
+  image?: StaticImageData | string;
+    imageAlt?: string;
   className?: string;
 }
 
@@ -43,7 +43,7 @@ const CategoryBanner = ({
   const alt =
     imageAlt ??
     `${parentCategory ? `${slugToTitle(parentCategory)} - ` : ""}${heading} banner`;
-
+const imageSrc = image || TonerBannerImage;
   return (
     <section
       data-slot="category-banner"
@@ -53,15 +53,16 @@ const CategoryBanner = ({
         className
       )}
     >
-      <Image
-        src={image}
-        alt={alt}
-        fill
-        priority
-        placeholder="blur"
-        sizes="100vw"
-        className="-z-20 object-cover object-center"
-      />
+      
+<Image
+  src={imageSrc}
+  alt={alt}
+  fill
+  priority
+  {...(typeof imageSrc !== "string" && { placeholder: "blur" as const })}
+  sizes="100vw"
+  className="-z-20 object-cover object-center"
+/>
 
       {/* Dark overlay so the white title stays readable */}
       <div aria-hidden="true" className="absolute inset-0 -z-10 bg-black/55" />

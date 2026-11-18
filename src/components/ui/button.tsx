@@ -77,6 +77,7 @@ subscribe: [
   "hover:bg-[#6E2D6B] focus-visible:ring-2 focus-visible:ring-[#F24DEB]/40",
   "[&_svg:not([class*='size-'])]:size-[15px]",
 ],
+
       },
       
       size: {
@@ -93,6 +94,7 @@ subscribe: [
           "size-7 rounded-[min(var(--radius-md),12px)] in-data-[slot=button-group]:rounded-lg",
         "icon-lg": "size-9",
       },
+      
     },
     defaultVariants: {
       variant: "default",

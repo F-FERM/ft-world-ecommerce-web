@@ -1,5 +1,5 @@
 import axios from "axios";
-import { LocalStorage } from "../utility/localStorage";
+import { LocalStorage, TOKEN_KEYS } from "../utility/localStorage";
 
 
 
@@ -29,7 +29,7 @@ const axiosInstance = axios.create({
 // Request interceptor
 axiosInstance.interceptors.request.use(
   (config) => {
-    const accessToken = LocalStorage.getItem("access_token");
+    const accessToken = LocalStorage.getItem(TOKEN_KEYS.customer);
     if (accessToken && config.headers) {
       config.headers.Authorization = `Bearer ${accessToken}`;
     }
@@ -65,7 +65,7 @@ axiosInstance.interceptors.response.use(
       originalRequest._retry = true;
       isRefreshing = true;
 
-      const refreshToken = LocalStorage.getItem("refreshToken");
+      const refreshToken = LocalStorage.getItem("customer_refresh_token");
 
       if (!refreshToken) {
         LocalStorage.clear();
@@ -80,8 +80,8 @@ axiosInstance.interceptors.response.use(
         const { accessToken, refreshToken: newRefreshToken } =
           response.data.tokens;
 
-        LocalStorage.setItem("access_token", accessToken);
-        LocalStorage.setItem("refreshToken", newRefreshToken);
+        LocalStorage.setItem(TOKEN_KEYS.customer, accessToken);
+        LocalStorage.setItem("customer_refresh_token", newRefreshToken);
 
         axiosInstance.defaults.headers.common.Authorization = `Bearer ${accessToken}`;
         originalRequest.headers.Authorization = `Bearer ${accessToken}`;

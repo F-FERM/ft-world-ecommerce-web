@@ -1,22 +1,29 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Image, { type StaticImageData } from "next/image";
 import Link from "next/link";
+import { Heart } from "lucide-react";
+import { toast } from "sonner";
 import { cn } from "@/src/lib/utils";
 import { Button } from "@/src/components/ui/button";
+import { useToggleWishlist, useWishlistIds } from "@/src/api/wishlist";
+import { isCustomerLoggedIn } from "@/src/api/useCart";
+import { useRouter } from "next/navigation";
 
 export interface Product {
   id: string;
+  slug?: string;
   title: string;
   compatibleFor: string;
   models: string;
   price: number;
   oldPrice?: number;
-  discount?: number;
-  image: StaticImageData | string;
-  imageAlt?: string;
-  href?: string;
+  discount: number;
+  image: string | StaticImageData;
   category?: string;
+  inStock?: boolean;
+  href?: string;
 }
 
 interface ProductCardProps {
@@ -28,14 +35,39 @@ interface ProductCardProps {
 const formatPrice = (value: number) => `AED. ${value.toFixed(2)}`;
 
 const ProductCard = ({ product, onAddToCart, className }: ProductCardProps) => {
-  const { id, title, compatibleFor, models, price, oldPrice, image, imageAlt } = product;
+  const router = useRouter();
+  const { id, title, compatibleFor, models, price, oldPrice, image } = product;
 
-  // Every product opens its own detail page: /products/p1, /products/p2 ...
-  const href = product.href ?? `/product/${id}`;
+  const href = `/product/${id}`;
 
   const discount =
     product.discount ??
     (oldPrice && oldPrice > price ? Math.round(((oldPrice - price) / oldPrice) * 100) : 0);
+
+  /* ---- Wishlist ---- */
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const loggedIn = mounted && isCustomerLoggedIn();
+  const wishlistIds = useWishlistIds({ enabled: loggedIn });
+  const isWishlisted = mounted && wishlistIds.has(id);
+  const toggleWishlist = useToggleWishlist();
+
+  const handleWishlist = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!loggedIn) {
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem("redirect_after_login", window.location.pathname);
+      }
+      toast.info("Please sign in to add items to your wishlist");
+      router.push("/login?redirect=wishlist");
+      return;
+    }
+    toggleWishlist.mutate(id);
+  };
 
   return (
     <article
@@ -58,11 +90,35 @@ const ProductCard = ({ product, onAddToCart, className }: ProductCardProps) => {
         </span>
       )}
 
+      {/* ❤ Wishlist button – top right, above the stretch-link */}
+      <button
+        type="button"
+        aria-label={isWishlisted ? "Remove from wishlist" : "Add to wishlist"}
+        onClick={handleWishlist}
+        disabled={toggleWishlist.isPending}
+        className={cn(
+          "absolute right-4 top-4 z-10 flex size-[34px] items-center justify-center rounded-full border transition-all duration-200 shadow-sm",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6E2D6B]/50 focus-visible:ring-offset-1",
+          "disabled:cursor-not-allowed disabled:opacity-60",
+          "sm:right-5 sm:top-5 2xl:right-[27px] 2xl:top-[29px]",
+          isWishlisted
+            ? "border-[#E53935]/40 bg-[#FFF2F2] text-[#E53935] hover:bg-[#FFE5E5]"
+            : "border-[#E5E5E5] bg-white/95 text-[#9E9E9E] hover:border-[#E53935] hover:text-[#E53935]"
+        )}
+      >
+        <Heart
+          className={cn(
+            "size-[16px] sm:size-[17px] transition-colors duration-200",
+            isWishlisted ? "fill-[#E53935] text-[#E53935]" : "fill-none text-[#9E9E9E]"
+          )}
+        />
+      </button>
+
       {/* Image */}
       <div className="relative aspect-[296/200] w-full">
         <Image
           src={image}
-          alt={imageAlt ?? title}
+          alt={title}
           fill
           sizes="(min-width: 1536px) 296px, (min-width: 1024px) 25vw, (min-width: 640px) 50vw, 100vw"
           className="object-contain"
@@ -77,8 +133,7 @@ const ProductCard = ({ product, onAddToCart, className }: ProductCardProps) => {
             "text-[18px] sm:text-[20px] 2xl:text-[22px]"
           )}
         >
-          {/* The after: pseudo-element stretches this link over the whole card (article is `relative`),
-              so clicking anywhere on the card navigates. */}
+          {/* Stretch link covers whole card */}
           <Link
             href={href}
             className="after:absolute after:inset-0 after:content-[''] hover:underline focus-visible:underline focus-visible:outline-none"
@@ -127,7 +182,7 @@ const ProductCard = ({ product, onAddToCart, className }: ProductCardProps) => {
           )}
         </div>
 
-        {/* relative z-10 keeps the button above the stretched link, so "Add to cart" does NOT navigate */}
+        {/* z-10 keeps "Add to cart" above the stretch-link */}
         <Button
           type="button"
           variant="addToCart"

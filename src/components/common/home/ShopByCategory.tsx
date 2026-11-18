@@ -1,39 +1,96 @@
-import Link from "next/link";
-import Image, { type StaticImageData } from "next/image";
-import { ArrowUpRight } from "lucide-react";
-import { cn } from "@/src/lib/utils";
-import TonerCartridge from "../../../../public/images/Tonercartridge.png";
-import TonerBottle from "../../../../public/images/HeroSlide1.png";
-import MulticolorToner from "../../../../public/images/multicolortoner.png";
-import InkCartridge from "../../../../public/images/HeroSlide1.png";
-import InkBottle from "../../../../public/images/HeroSlide1.png";
-import PrintHead from "../../../../public/images/HeroSlide1.png";
-import MaintenanceKit from "../../../../public/images/maintenancekit.png";
-import DrumUnit from "../../../../public/images/drumunit.png";
+"use client";
 
-interface Category {
-  id: string;
-  title: string;
-  href: string;
-  image?: StaticImageData; 
+import api from "@/src/lib/axios";
+import { cn } from "@/src/lib/utils";
+import { useQuery } from "@tanstack/react-query";
+import { ArrowUpRight } from "lucide-react";
+import Image from "next/image";
+import Link from "next/link";
+import { useMemo } from "react";
+
+/* -------------------------------------------------------------------------- */
+/*                                TYPES + API                                 */
+/* -------------------------------------------------------------------------- */
+
+export interface AccessoryCategory {
+  _id: string;
+  name: string;
+  imageUrl: string;
+  slug: string;
 }
 
-const CATEGORIES: Category[] = [
-  { id: "toner-cartridge", title: "Toner Cartridge", href: "/shop/toner-cartridge", image: TonerCartridge },
-  { id: "toner-bottle", title: "Toner Bottle", href: "/shop/toner-bottle", image: TonerBottle },
-  { id: "multicolor-toner", title: "Multicolor Toner", href: "/shop/multicolor-toner", image: MulticolorToner },
-  { id: "ink-cartridge", title: "Ink Cartridge", href: "/shop/ink-cartridge", image: InkCartridge },
-  { id: "ink-bottle", title: "Ink Bottle", href: "/shop/ink-bottle", image: InkBottle },
-  { id: "print-head", title: "Print Head", href: "/shop/print-head", image: PrintHead },
-  { id: "maintenance-kit", title: "Maintenance Kit", href: "/shop/maintenance-kit", image: MaintenanceKit },
-  { id: "drum-unit", title: "Drum Unit", href: "/shop/drum-unit", image: DrumUnit },
-];
+export interface Category {
+  _id: string;
+  isDeleted: boolean;
+  name: string;
+  description: string;
+  isActive: boolean;
+  imageUrl: string;
+  slug: string;
+  accessoryCategories: (string | AccessoryCategory)[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface ApiResponse<T> {
+  success: boolean;
+  data: T;
+  message: string;
+  statusCode: number;
+}
+
+const fetchCategories = async (): Promise<Category[]> => {
+  const { data } = await api.get<ApiResponse<Category[]>>("/categories");
+  return data?.data ?? [];
+};
+
+/* -------------------------------------------------------------------------- */
+/*                                  CONSTANTS                                 */
+/* -------------------------------------------------------------------------- */
+
+const SKELETON_COUNT = 4;
+
+const GRID_CLASS =
+  "mt-6 grid grid-cols-1 gap-[15px] sm:mt-8 sm:grid-cols-2 lg:mt-10 xl:grid-cols-4 2xl:mt-[50px]";
+
+// A category is a "parent" when no other category lists it in accessoryCategories.
+// Inactive and deleted categories are excluded.
+const getParentCategories = (categories: Category[]): Category[] => {
+  const childIds = new Set<string>();
+  for (const cat of categories) {
+    for (const acc of cat.accessoryCategories ?? []) {
+      childIds.add(typeof acc === "string" ? acc : acc._id);
+    }
+  }
+
+  return categories.filter(
+    (cat) => cat.isActive && !cat.isDeleted && !childIds.has(cat._id)
+  );
+};
+
+/* -------------------------------------------------------------------------- */
+/*                                 COMPONENT                                  */
+/* -------------------------------------------------------------------------- */
 
 interface ShopByCategoryProps {
   className?: string;
 }
 
 const ShopByCategory = ({ className }: ShopByCategoryProps) => {
+  const { data: categories, isLoading } = useQuery({
+    queryKey: ["shopByCategory"],
+    queryFn: fetchCategories,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
+
+  const visibleCategories = useMemo(
+    () => getParentCategories(categories ?? []),
+    [categories]
+  );
+
+  // Nothing to show once loaded (empty or failed) -> hide the whole section
+  if (!isLoading && visibleCategories.length === 0) return null;
+
   return (
     <section
       data-slot="shop-by-category"
@@ -45,7 +102,7 @@ const ShopByCategory = ({ className }: ShopByCategoryProps) => {
       <div className="mx-auto w-full max-w-[1565px]">
         <p
           className={cn(
-            " font-semibold capitalize leading-[100%] tracking-[0%] text-primary",
+            "font-semibold capitalize leading-[100%] tracking-[0%] text-primary",
             "text-[14px] sm:text-[16px] 2xl:text-[18px]"
           )}
         >
@@ -54,39 +111,42 @@ const ShopByCategory = ({ className }: ShopByCategoryProps) => {
 
         <h2
           className={cn(
-            " font-semibold capitalize leading-[100%] tracking-[0%] text-black sm:mt-4 2xl:mt-[10px]",
+            "font-semibold capitalize leading-[100%] tracking-[0%] text-black sm:mt-4 2xl:mt-[10px]",
             "text-[28px] sm:text-[36px] md:text-[42px] xl:text-[48px] 2xl:text-[55px]"
           )}
         >
           What Are You Looking For?
         </h2>
 
-        {/* Cards: 1 col → 2 → 4 (Figma: 4 x 2, 15px gap) */}
-        <ul className="mt-6 grid grid-cols-1 gap-[15px] sm:mt-8 sm:grid-cols-2 lg:mt-10 xl:grid-cols-4 2xl:mt-[50px]">
-          {CATEGORIES.map((category) => {
-            const hasImage = Boolean(category.image);
-
-            return (
-              <li key={category.id}>
+        {isLoading ? (
+          <ul className={GRID_CLASS} aria-busy="true">
+            {Array.from({ length: SKELETON_COUNT }).map((_, i) => (
+              <li
+                key={i}
+                className="aspect-[355/209] w-full animate-pulse rounded-[30px] bg-gray-200"
+              />
+            ))}
+          </ul>
+        ) : (
+          <ul className={GRID_CLASS}>
+            {visibleCategories.map((category) => (
+              <li key={category._id}>
                 <Link
-                  href={category.href}
+                  href={`/shop/${category.slug}`}
                   className={cn(
                     "group relative isolate flex aspect-[355/209] w-full flex-col justify-between overflow-hidden",
-                    "rounded-[30px] p-5 sm:p-[30px]",
+                    "rounded-[30px] bg-[#9B4A97] p-5 sm:p-[30px]",
                     "shadow-[0_0_4px_0_#00000040]",
-                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
-                    hasImage ? "bg-[#E5BFE3]" : "bg-[#D9D9D9]"
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
                   )}
                 >
-                  {/* Imported image + dark gradient (Figma: transparent → 70% black) */}
-                  {category.image && (
+                  {category.imageUrl && (
                     <>
                       <Image
-                        src={category.image}
+                        src={category.imageUrl}
                         alt=""
                         aria-hidden="true"
                         fill
-                        placeholder="blur"
                         sizes="(min-width: 1536px) 355px, (min-width: 1280px) 25vw, (min-width: 640px) 50vw, 100vw"
                         className="-z-20 object-cover transition-transform duration-500 group-hover:scale-105 motion-reduce:transition-none"
                       />
@@ -97,33 +157,29 @@ const ShopByCategory = ({ className }: ShopByCategoryProps) => {
                     </>
                   )}
 
-                  {/* Arrow circle: 42 x 42, #6E2D6B */}
                   <span
                     aria-hidden="true"
                     className={cn(
-                      "flex size-9 items-center justify-center self-end rounded-full p-[10px] text-white sm:size-[42px]",
-                      "transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 motion-reduce:transition-none",
-                      hasImage ? "bg-[#6E2D6B]" : "bg-[#9B9B9B]"
+                      "flex size-9 items-center justify-center self-end rounded-full bg-[#6E2D6B] p-[10px] text-white sm:size-[42px]",
+                      "transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 motion-reduce:transition-none"
                     )}
                   >
                     <ArrowUpRight className="size-full" strokeWidth={1.75} />
                   </span>
 
-                  {/* Title */}
                   <span
                     className={cn(
-                      "font-semibold capitalize leading-[100%] tracking-[0%]",
-                      "text-[20px] sm:text-[22px] 2xl:text-[26px]",
-                      hasImage ? "text-white" : "text-[#1F1F1F]"
+                      "line-clamp-2 pr-2 font-semibold capitalize leading-[100%] tracking-[0%] text-white",
+                      "text-[20px] sm:text-[22px] 2xl:text-[26px]"
                     )}
                   >
-                    {category.title}
+                    {category.name}
                   </span>
                 </Link>
               </li>
-            );
-          })}
-        </ul>
+            ))}
+          </ul>
+        )}
       </div>
     </section>
   );
