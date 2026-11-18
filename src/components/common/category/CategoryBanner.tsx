@@ -9,7 +9,7 @@ export const safeDecode = (value: string): string => {
   try {
     return decodeURIComponent(value);
   } catch {
-    return value; 
+    return value;
   }
 };
 
@@ -19,15 +19,26 @@ export const slugToTitle = (slug: string): string =>
     .filter(Boolean)
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
-const bannerHeight =
-  "h-[180px] sm:h-[240px] md:h-[300px] lg:h-[380px] xl:h-[440px] 2xl:h-[522px]";
+
+/**
+ * Banner sizing:
+ * - min-h is fluid: ~240px on phones, grows with viewport, caps at 522px.
+ * - pt reserves room for the header that overlays the banner
+ *   (uses --header-h from global CSS, falls back to 80px).
+ * - pb gives the title breathing room at the bottom.
+ */
+const bannerHeight = [
+  "min-h-[clamp(240px,55vw,522px)]",
+  "pt-[var(--header-h,80px)]",
+  "pb-6 sm:pb-8 lg:pb-12",
+].join(" ");
 
 interface CategoryBannerProps {
   parentCategory?: string;
   category?: string;
   title?: string;
   image?: StaticImageData | string;
-    imageAlt?: string;
+  imageAlt?: string;
   className?: string;
 }
 
@@ -43,7 +54,8 @@ const CategoryBanner = ({
   const alt =
     imageAlt ??
     `${parentCategory ? `${slugToTitle(parentCategory)} - ` : ""}${heading} banner`;
-const imageSrc = image || TonerBannerImage;
+  const imageSrc = image || TonerBannerImage;
+
   return (
     <section
       data-slot="category-banner"
@@ -53,26 +65,27 @@ const imageSrc = image || TonerBannerImage;
         className
       )}
     >
-      
-<Image
-  src={imageSrc}
-  alt={alt}
-  fill
-  priority
-  {...(typeof imageSrc !== "string" && { placeholder: "blur" as const })}
-  sizes="100vw"
-  className="-z-20 object-cover object-center"
-/>
+      <Image
+        src={imageSrc}
+        alt={alt}
+        fill
+        priority
+        {...(typeof imageSrc !== "string" && { placeholder: "blur" as const })}
+        sizes="100vw"
+        // Bottom-anchored on phones so the products stay visible
+        className="-z-20 object-cover object-bottom md:object-center"
+      />
 
       {/* Dark overlay so the white title stays readable */}
       <div aria-hidden="true" className="absolute inset-0 -z-10 bg-black/55" />
 
       <h1
         className={cn(
-          "w-full max-w-[1464px] px-4 text-center font-semibold uppercase text-white sm:px-8 xl:px-12",
-          "text-[28px] leading-[1.25] tracking-[0.03em]",
-          "sm:text-[40px] md:text-[56px] lg:text-[68px] xl:text-[80px] 2xl:text-[90px] 2xl:leading-[112px]",
-          "text-balance"
+          "w-full max-w-[1464px] px-4 text-center font-semibold uppercase text-white",
+          "sm:px-8 xl:px-12",
+          // Fluid font: 24px min → 6vw → 90px max
+          "text-[clamp(1.5rem,6vw,5.625rem)] leading-[1.15] tracking-[0.03em]",
+          "text-balance break-words"
         )}
       >
         {heading}

@@ -1,10 +1,21 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { CheckCircle2, Loader2, AlertCircle, ShieldCheck } from "lucide-react";
+import {
+  AlertCircle,
+  Check,
+  CheckCircle2,
+  ChevronDown,
+  Loader2,
+  Lock,
+  Mail,
+  MapPin,
+  Phone,
+  ShieldCheck,
+} from "lucide-react";
 import { authApi, RegisterPayload } from "@/src/api/auth";
 import FormField from "./FormField";
 
@@ -37,6 +48,251 @@ const emptyAddress = {
   country: "",
   postalCode: "",
 };
+
+/* ------------------------------ Style tokens ------------------------------ */
+
+const inputBase =
+  "h-11 w-full rounded-xl border bg-white px-3.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:ring-4 focus:ring-[#542452]/10 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400";
+
+const primaryBtn =
+  "inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#542452] px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#6e2d6b] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#542452]/25 disabled:cursor-not-allowed disabled:opacity-50";
+
+const linkBtn =
+  "text-xs font-medium text-slate-500 underline-offset-2 transition hover:text-[#542452] hover:underline disabled:cursor-not-allowed disabled:text-slate-300 disabled:no-underline";
+
+/* ------------------------------ Small pieces ------------------------------ */
+
+type StepState = "done" | "active" | "idle";
+
+function Stepper({
+  steps,
+}: {
+  steps: { label: string; state: StepState; icon?: ReactNode }[];
+}) {
+  return (
+    <ol className="flex items-start" aria-label="Registration progress">
+      {steps.map((s, i) => {
+        const prevDone = i > 0 && steps[i - 1].state === "done";
+        return (
+          <li
+            key={s.label}
+            aria-current={s.state === "active" ? "step" : undefined}
+            className="relative flex flex-1 flex-col items-center gap-1.5 text-center"
+          >
+            {i > 0 && (
+              <span
+                aria-hidden="true"
+                className={`absolute right-1/2 top-3.5 h-0.5 w-full -translate-y-1/2 transition-colors ${
+                  prevDone ? "bg-emerald-500" : "bg-slate-200"
+                }`}
+              />
+            )}
+            <span
+              className={`relative z-10 flex size-7 items-center justify-center rounded-full text-xs font-semibold ring-4 ring-white transition ${
+                s.state === "done"
+                  ? "bg-emerald-500 text-white"
+                  : s.state === "active"
+                  ? "bg-[#542452] text-white"
+                  : "bg-slate-200 text-slate-500"
+              }`}
+            >
+              {s.state === "done" ? <Check className="size-4" /> : s.icon ?? i + 1}
+            </span>
+            <span
+              className={`text-[11px] font-medium leading-tight sm:text-xs ${
+                s.state === "idle" ? "text-slate-400" : "text-slate-800"
+              }`}
+            >
+              {s.label}
+            </span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+function StepCard({
+  icon,
+  title,
+  locked,
+  verified,
+  hint,
+  children,
+}: {
+  icon: ReactNode;
+  title: string;
+  locked?: boolean;
+  verified?: boolean;
+  hint?: string;
+  children: ReactNode;
+}) {
+  return (
+    <section
+      className={`rounded-2xl border p-4 transition sm:p-5 ${
+        verified
+          ? "border-emerald-200 bg-emerald-50/30"
+          : locked
+          ? "border-slate-200 bg-slate-50/70"
+          : "border-slate-200 bg-white shadow-sm"
+      }`}
+    >
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+        <h3
+          className={`flex items-center gap-2 text-sm font-semibold ${
+            locked ? "text-slate-400" : "text-slate-800"
+          }`}
+        >
+          <span
+            className={`flex size-7 items-center justify-center rounded-lg ${
+              verified
+                ? "bg-emerald-100 text-emerald-700"
+                : locked
+                ? "bg-slate-200/70 text-slate-400"
+                : "bg-[#542452]/10 text-[#542452]"
+            }`}
+          >
+            {icon}
+          </span>
+          {title} <span className="text-red-600">*</span>
+        </h3>
+        {hint && (
+          <span className="flex items-center gap-1 text-[11px] font-medium text-amber-700">
+            <AlertCircle className="size-3.5" /> {hint}
+          </span>
+        )}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function VerifiedBadge({ label, onChange }: { label: string; onChange: () => void }) {
+  return (
+    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-emerald-100/60 px-3 py-2.5 text-xs font-medium text-emerald-800">
+      <span className="flex min-w-0 items-center gap-1.5">
+        <CheckCircle2 className="size-4 shrink-0 text-emerald-600" />
+        <span className="truncate">{label}</span>
+      </span>
+      <button type="button" onClick={onChange} className={linkBtn}>
+        Change
+      </button>
+    </div>
+  );
+}
+
+function OtpPanel({
+  target,
+  otp,
+  setOtp,
+  busy,
+  cooldown,
+  error,
+  changeLabel,
+  onVerify,
+  onResend,
+  onChangeTarget,
+}: {
+  target: string;
+  otp: string;
+  setOtp: (v: string) => void;
+  busy: boolean;
+  cooldown: number;
+  error: string;
+  changeLabel: string;
+  onVerify: () => void;
+  onResend: () => void;
+  onChangeTarget: () => void;
+}) {
+  return (
+    <div className="mt-3 rounded-xl border border-[#542452]/15 bg-[#FAF5F9] p-3.5">
+      <p className="mb-3 break-all text-xs text-slate-600 sm:text-[13px]">
+        Enter the code we sent to{" "}
+        <span className="font-semibold text-slate-900">{target}</span>
+      </p>
+
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <input
+          type="text"
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          maxLength={6}
+          placeholder="••••••"
+          aria-label="One-time code"
+          value={otp}
+          onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
+          disabled={busy}
+          className={`${inputBase} border-slate-300 text-center text-base font-semibold tracking-[0.5em] focus:border-[#542452] sm:w-44`}
+        />
+        <button
+          type="button"
+          onClick={onVerify}
+          disabled={busy || otp.trim().length < 4}
+          className={`${primaryBtn} sm:flex-1`}
+        >
+          {busy ? (
+            <>
+              <Loader2 className="size-4 animate-spin" /> Verifying…
+            </>
+          ) : (
+            "Verify code"
+          )}
+        </button>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+        <button type="button" onClick={onChangeTarget} className={linkBtn}>
+          {changeLabel}
+        </button>
+        <button
+          type="button"
+          onClick={onResend}
+          disabled={cooldown > 0 || busy}
+          className={`${linkBtn} !text-[#542452] disabled:!text-slate-400`}
+        >
+          {cooldown > 0 ? `Resend in ${cooldown}s` : "Resend code"}
+        </button>
+      </div>
+
+      {error && (
+        <p role="alert" className="mt-2 text-xs font-medium text-red-600">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function SendButton({
+  busy,
+  disabled,
+  label,
+  onClick,
+}: {
+  busy: boolean;
+  disabled: boolean;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`${primaryBtn} mt-3 w-full sm:w-auto`}
+    >
+      {busy ? (
+        <>
+          <Loader2 className="size-4 animate-spin" /> Sending code…
+        </>
+      ) : (
+        label
+      )}
+    </button>
+  );
+}
+
+/* -------------------------------- Component -------------------------------- */
 
 export default function RegisterForm() {
   const router = useRouter();
@@ -88,6 +344,9 @@ export default function RegisterForm() {
     setForm((f) => ({ ...f, [k]: e.target.value }));
     // Clear validation error on change
     if (errors[k]) setErrors((prev) => ({ ...prev, [k]: undefined }));
+    // Clear stale OTP-section errors as soon as the user edits the field
+    if (k === "email") setEmailError("");
+    if (k === "phone") setPhoneError("");
   };
 
   const setA = (k: keyof typeof address) => (e: React.ChangeEvent<HTMLInputElement>) =>
@@ -104,7 +363,7 @@ export default function RegisterForm() {
       setEmailError("Enter your email address.");
       return;
     }
-    if (!/^\S+@\S+\.\S+$/.test(trimmed)) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(trimmed)) {
       setEmailError("Enter a valid email address.");
       return;
     }
@@ -265,70 +524,41 @@ export default function RegisterForm() {
     form.password.length >= 8 &&
     !busy;
 
+  const steps: { label: string; state: StepState; icon?: ReactNode }[] = [
+    { label: "Verify email", state: emailVerified ? "done" : "active" },
+    {
+      label: "Verify phone",
+      state: phoneVerified ? "done" : emailVerified ? "active" : "idle",
+    },
+    {
+      label: "Create account",
+      state: phoneVerified ? "active" : "idle",
+      icon: <ShieldCheck className="size-4" />,
+    },
+  ];
+
+  const helperText = !emailVerified
+    ? "Verify your email to continue."
+    : !phoneVerified
+    ? "Verify your phone number to continue."
+    : !form.firstName.trim()
+    ? "Enter your full name."
+    : form.password.length < 8
+    ? "Password must be at least 8 characters."
+    : "";
+
   return (
-    <form onSubmit={handleSubmit} noValidate className="space-y-4">
-      {/* Step Guide / Indicator */}
-      <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
-          Verification Flow
-        </p>
-        <div className="grid grid-cols-3 gap-2 text-center text-[11px] sm:text-xs">
-          <div
-            className={`flex items-center justify-center gap-1 rounded-lg py-1.5 px-1 font-medium transition ${
-              emailVerified
-                ? "bg-emerald-100 text-emerald-800"
-                : "bg-purple-100 text-[#542452] font-semibold ring-1 ring-[#542452]/20"
-            }`}
-          >
-            {emailVerified ? (
-              <CheckCircle2 className="size-3.5 shrink-0 text-emerald-600" />
-            ) : (
-              <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-[#542452] text-[10px] text-white">
-                1
-              </span>
-            )}
-            <span className="truncate">1. Email OTP</span>
-          </div>
-
-          <div
-            className={`flex items-center justify-center gap-1 rounded-lg py-1.5 px-1 font-medium transition ${
-              phoneVerified
-                ? "bg-emerald-100 text-emerald-800"
-                : emailVerified
-                ? "bg-purple-100 text-[#542452] font-semibold ring-1 ring-[#542452]/20"
-                : "bg-slate-200/60 text-slate-400"
-            }`}
-          >
-            {phoneVerified ? (
-              <CheckCircle2 className="size-3.5 shrink-0 text-emerald-600" />
-            ) : (
-              <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-slate-400 text-[10px] text-white">
-                2
-              </span>
-            )}
-            <span className="truncate">2. Phone OTP</span>
-          </div>
-
-          <div
-            className={`flex items-center justify-center gap-1 rounded-lg py-1.5 px-1 font-medium transition ${
-              canCreateAccount
-                ? "bg-emerald-100 text-emerald-800 font-semibold"
-                : "bg-slate-200/60 text-slate-400"
-            }`}
-          >
-            {canCreateAccount ? (
-              <ShieldCheck className="size-3.5 shrink-0 text-emerald-600" />
-            ) : (
-              <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-slate-400 text-[10px] text-white">
-                3
-              </span>
-            )}
-            <span className="truncate">3. Register</span>
-          </div>
-        </div>
+    <form
+      onSubmit={handleSubmit}
+      noValidate
+      className="mx-auto w-full max-w-xl space-y-5"
+    >
+      {/* Progress */}
+      <div className="rounded-2xl border border-[#542452]/10 bg-gradient-to-br from-[#FAF5F9] to-white px-3 pb-3.5 pt-4 sm:px-6">
+        <Stepper steps={steps} />
       </div>
 
-      {/* Full Name */}
+      {/* Full name */}
       <FormField
         label="Full name"
         placeholder="e.g. John Doe"
@@ -339,288 +569,158 @@ export default function RegisterForm() {
         required
       />
 
-      {/* -------------------- 1. EMAIL & OTP SECTION -------------------- */}
-      <div className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm">
-        <label className="mb-1.5 block text-sm font-medium text-slate-700">
-          Email address <span className="text-red-600">*</span>
-        </label>
+      {/* Step 1: Email */}
+      <StepCard
+        icon={<Mail className="size-4" />}
+        title="Email address"
+        verified={emailVerified}
+      >
         <div className="relative">
           <input
             type="email"
             placeholder="you@example.com"
             autoComplete="email"
+            aria-label="Email address"
             value={form.email}
             onChange={setF("email")}
             disabled={emailVerified || emailOtpBusy}
-            className={`w-full rounded-lg border bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:ring-2 focus:ring-[#542452]/20 ${
+            className={`${inputBase} ${
               emailVerified
-                ? "border-emerald-500 bg-emerald-50/30 text-emerald-900"
+                ? "border-emerald-400 pr-10"
                 : errors.email
                 ? "border-red-500"
                 : "border-slate-300 focus:border-[#542452]"
-            } disabled:bg-slate-50 disabled:text-slate-500`}
+            }`}
             required
           />
           {emailVerified && (
-            <span className="absolute inset-y-0 right-3 flex items-center text-emerald-600">
-              <CheckCircle2 className="size-4" />
-            </span>
+            <CheckCircle2 className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-emerald-600" />
           )}
         </div>
-        {errors.email && <p className="mt-1 text-xs text-red-600">{errors.email}</p>}
-
-        {/* Email OTP Verification Block */}
-        {emailVerified ? (
-          <div className="mt-2.5 flex items-center justify-between rounded-lg bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800">
-            <span className="flex items-center gap-1.5">
-              <CheckCircle2 className="size-4 text-emerald-600" />
-              Email verified ({form.email})
-            </span>
-            <button
-              type="button"
-              onClick={handleResetEmail}
-              className="text-xs text-slate-600 underline hover:text-slate-900"
-            >
-              Change
-            </button>
-          </div>
-        ) : (
-          <div className="mt-2.5">
-            {!emailOtpSent ? (
-              <button
-                type="button"
-                onClick={handleSendEmailOtp}
-                disabled={emailOtpBusy || !form.email.trim()}
-                className="inline-flex h-[36px] items-center justify-center rounded-lg bg-[#542452] px-4 text-xs font-medium text-white transition hover:bg-[#6e2d6b] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {emailOtpBusy ? (
-                  <>
-                    <Loader2 className="mr-1.5 size-3.5 animate-spin" /> Sending OTP…
-                  </>
-                ) : (
-                  "Send Email OTP"
-                )}
-              </button>
-            ) : (
-              <div className="rounded-lg border border-purple-100 bg-[#FAF5F9] p-3 text-xs">
-                <p className="mb-2 text-slate-700">
-                  Enter the OTP code sent to{" "}
-                  <span className="font-semibold text-slate-900">{form.email}</span>
-                </p>
-                <div className="flex flex-wrap items-center gap-2">
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    maxLength={6}
-                    placeholder="Enter OTP"
-                    value={emailOtp}
-                    onChange={(e) => setEmailOtp(e.target.value)}
-                    disabled={emailOtpBusy}
-                    className="h-[36px] w-36 rounded-md border border-slate-300 bg-white px-3 text-center text-sm font-semibold tracking-widest text-slate-900 outline-none focus:border-[#542452] focus:ring-1 focus:ring-[#542452]"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleVerifyEmailOtp}
-                    disabled={emailOtpBusy || emailOtp.trim().length < 4}
-                    className="inline-flex h-[36px] items-center justify-center rounded-md bg-[#542452] px-4 text-xs font-medium text-white transition hover:bg-[#6e2d6b] disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {emailOtpBusy ? (
-                      <>
-                        <Loader2 className="mr-1 size-3 animate-spin" /> Verifying…
-                      </>
-                    ) : (
-                      "Verify OTP"
-                    )}
-                  </button>
-                </div>
-                <div className="mt-2 flex items-center justify-between text-slate-500">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEmailOtpSent(false);
-                      setEmailOtp("");
-                      setEmailError("");
-                    }}
-                    className="hover:underline"
-                  >
-                    Change email
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSendEmailOtp}
-                    disabled={emailCooldown > 0 || emailOtpBusy}
-                    className="font-medium text-[#542452] hover:underline disabled:text-slate-400"
-                  >
-                    {emailCooldown > 0 ? `Resend in ${emailCooldown}s` : "Resend OTP"}
-                  </button>
-                </div>
-                {emailError && (
-                  <p className="mt-1.5 text-xs font-medium text-red-600">{emailError}</p>
-                )}
-              </div>
-            )}
-          </div>
+        {errors.email && <p className="mt-1.5 text-xs text-red-600">{errors.email}</p>}
+        {!emailOtpSent && emailError && (
+          <p role="alert" className="mt-1.5 text-xs font-medium text-red-600">
+            {emailError}
+          </p>
         )}
-      </div>
 
-      {/* -------------------- 2. PHONE & OTP SECTION -------------------- */}
-      <div
-        className={`rounded-xl border p-3.5 shadow-sm transition ${
-          !emailVerified
-            ? "border-slate-200 bg-slate-50/70 opacity-60"
-            : "border-slate-200 bg-white"
-        }`}
+        {emailVerified ? (
+          <VerifiedBadge label={`Email verified · ${form.email}`} onChange={handleResetEmail} />
+        ) : !emailOtpSent ? (
+          <SendButton
+            busy={emailOtpBusy}
+            disabled={emailOtpBusy || !form.email.trim()}
+            label="Send email code"
+            onClick={handleSendEmailOtp}
+          />
+        ) : (
+          <OtpPanel
+            target={form.email}
+            otp={emailOtp}
+            setOtp={setEmailOtp}
+            busy={emailOtpBusy}
+            cooldown={emailCooldown}
+            error={emailError}
+            changeLabel="Change email"
+            onVerify={handleVerifyEmailOtp}
+            onResend={handleSendEmailOtp}
+            onChangeTarget={() => {
+              setEmailOtpSent(false);
+              setEmailOtp("");
+              setEmailError("");
+            }}
+          />
+        )}
+      </StepCard>
+
+      {/* Step 2: Phone */}
+      <StepCard
+        icon={<Phone className="size-4" />}
+        title="Phone number"
+        locked={!emailVerified}
+        verified={phoneVerified}
+        hint={!emailVerified ? "Verify email first" : undefined}
       >
-        <div className="mb-1.5 flex items-center justify-between">
-          <label className="block text-sm font-medium text-slate-700">
-            Phone number <span className="text-red-600">*</span>
-          </label>
-          {!emailVerified && (
-            <span className="flex items-center gap-1 text-[11px] font-medium text-amber-700">
-              <AlertCircle className="size-3" /> Verify email first
-            </span>
-          )}
-        </div>
-
-        {/* Combined Country Code + Phone Input */}
         <div className="flex gap-2">
-          <select
-            value={countryCode}
-            onChange={(e) => setCountryCode(e.target.value)}
-            disabled={!emailVerified || phoneVerified || phoneOtpBusy}
-            aria-label="Country Code"
-            className="h-[42px] max-w-[125px] rounded-lg border border-slate-300 bg-white px-2 text-xs font-medium text-slate-800 outline-none transition focus:border-[#542452] focus:ring-2 focus:ring-[#542452]/20 disabled:bg-slate-100 disabled:text-slate-400 sm:text-sm"
-          >
-            {COUNTRY_CODES.map((c) => (
-              <option key={c.code} value={c.code}>
-                {c.flag} {c.code}
-              </option>
-            ))}
-          </select>
+          <div className="relative w-[7.25rem] shrink-0">
+            <select
+              value={countryCode}
+              onChange={(e) => setCountryCode(e.target.value)}
+              disabled={!emailVerified || phoneVerified || phoneOtpBusy}
+              aria-label="Country code"
+              className={`${inputBase} cursor-pointer appearance-none border-slate-300 pl-3 pr-8 font-medium focus:border-[#542452]`}
+            >
+              {COUNTRY_CODES.map((c) => (
+                <option key={c.code} value={c.code}>
+                  {c.flag} {c.code}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+          </div>
 
-          <div className="relative flex-1">
+          <div className="relative min-w-0 flex-1">
             <input
               type="tel"
-              placeholder="e.g. 50 123 4567"
-              autoComplete="tel"
+              placeholder="50 123 4567"
+              autoComplete="tel-national"
+              aria-label="Phone number"
               value={form.phone}
               onChange={setF("phone")}
               disabled={!emailVerified || phoneVerified || phoneOtpBusy}
-              className={`h-[42px] w-full rounded-lg border bg-white px-3.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:ring-2 focus:ring-[#542452]/20 ${
+              className={`${inputBase} ${
                 phoneVerified
-                  ? "border-emerald-500 bg-emerald-50/30 text-emerald-900"
+                  ? "border-emerald-400 pr-10"
                   : errors.phone
                   ? "border-red-500"
                   : "border-slate-300 focus:border-[#542452]"
-              } disabled:bg-slate-100 disabled:text-slate-400`}
+              }`}
               required
             />
             {phoneVerified && (
-              <span className="absolute inset-y-0 right-3 flex items-center text-emerald-600">
-                <CheckCircle2 className="size-4" />
-              </span>
+              <CheckCircle2 className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-emerald-600" />
             )}
           </div>
         </div>
-        {errors.phone && <p className="mt-1 text-xs text-red-600">{errors.phone}</p>}
+        {errors.phone && <p className="mt-1.5 text-xs text-red-600">{errors.phone}</p>}
+        {emailVerified && !phoneOtpSent && !phoneVerified && phoneError && (
+          <p role="alert" className="mt-1.5 text-xs font-medium text-red-600">
+            {phoneError}
+          </p>
+        )}
 
-        {/* Phone OTP Verification Block */}
         {!emailVerified ? (
-          <p className="mt-2 text-xs text-slate-400">
-            Complete Step 1 (Email verification) above to unlock phone verification.
+          <p className="mt-3 text-xs text-slate-400">
+            Verify your email above to unlock this step.
           </p>
         ) : phoneVerified ? (
-          <div className="mt-2.5 flex items-center justify-between rounded-lg bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800">
-            <span className="flex items-center gap-1.5">
-              <CheckCircle2 className="size-4 text-emerald-600" />
-              Phone verified ({fullPhone})
-            </span>
-            <button
-              type="button"
-              onClick={handleResetPhone}
-              className="text-xs text-slate-600 underline hover:text-slate-900"
-            >
-              Change
-            </button>
-          </div>
+          <VerifiedBadge label={`Phone verified · ${fullPhone}`} onChange={handleResetPhone} />
+        ) : !phoneOtpSent ? (
+          <SendButton
+            busy={phoneOtpBusy}
+            disabled={phoneOtpBusy || !cleanPhone || cleanPhone.length < 7}
+            label="Send phone code"
+            onClick={handleSendPhoneOtp}
+          />
         ) : (
-          <div className="mt-2.5">
-            {!phoneOtpSent ? (
-              <button
-                type="button"
-                onClick={handleSendPhoneOtp}
-                disabled={phoneOtpBusy || !cleanPhone || cleanPhone.length < 7}
-                className="inline-flex h-[36px] items-center justify-center rounded-lg bg-[#542452] px-4 text-xs font-medium text-white transition hover:bg-[#6e2d6b] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {phoneOtpBusy ? (
-                  <>
-                    <Loader2 className="mr-1.5 size-3.5 animate-spin" /> Sending OTP…
-                  </>
-                ) : (
-                  "Send Phone OTP"
-                )}
-              </button>
-            ) : (
-              <div className="rounded-lg border border-purple-100 bg-[#FAF5F9] p-3 text-xs">
-                <p className="mb-2 text-slate-700">
-                  Enter the OTP code sent to{" "}
-                  <span className="font-semibold text-slate-900">{fullPhone}</span>
-                </p>
-                <div className="flex flex-wrap items-center gap-2">
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    maxLength={6}
-                    placeholder="Enter OTP"
-                    value={phoneOtp}
-                    onChange={(e) => setPhoneOtp(e.target.value)}
-                    disabled={phoneOtpBusy}
-                    className="h-[36px] w-36 rounded-md border border-slate-300 bg-white px-3 text-center text-sm font-semibold tracking-widest text-slate-900 outline-none focus:border-[#542452] focus:ring-1 focus:ring-[#542452]"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleVerifyPhoneOtp}
-                    disabled={phoneOtpBusy || phoneOtp.trim().length < 4}
-                    className="inline-flex h-[36px] items-center justify-center rounded-md bg-[#542452] px-4 text-xs font-medium text-white transition hover:bg-[#6e2d6b] disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {phoneOtpBusy ? (
-                      <>
-                        <Loader2 className="mr-1 size-3 animate-spin" /> Verifying…
-                      </>
-                    ) : (
-                      "Verify OTP"
-                    )}
-                  </button>
-                </div>
-                <div className="mt-2 flex items-center justify-between text-slate-500">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPhoneOtpSent(false);
-                      setPhoneOtp("");
-                      setPhoneError("");
-                    }}
-                    className="hover:underline"
-                  >
-                    Change number
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSendPhoneOtp}
-                    disabled={phoneCooldown > 0 || phoneOtpBusy}
-                    className="font-medium text-[#542452] hover:underline disabled:text-slate-400"
-                  >
-                    {phoneCooldown > 0 ? `Resend in ${phoneCooldown}s` : "Resend OTP"}
-                  </button>
-                </div>
-                {phoneError && (
-                  <p className="mt-1.5 text-xs font-medium text-red-600">{phoneError}</p>
-                )}
-              </div>
-            )}
-          </div>
+          <OtpPanel
+            target={fullPhone}
+            otp={phoneOtp}
+            setOtp={setPhoneOtp}
+            busy={phoneOtpBusy}
+            cooldown={phoneCooldown}
+            error={phoneError}
+            changeLabel="Change number"
+            onVerify={handleVerifyPhoneOtp}
+            onResend={handleSendPhoneOtp}
+            onChangeTarget={() => {
+              setPhoneOtpSent(false);
+              setPhoneOtp("");
+              setPhoneError("");
+            }}
+          />
         )}
-      </div>
+      </StepCard>
 
       {/* Password */}
       <FormField
@@ -634,84 +734,89 @@ export default function RegisterForm() {
         required
       />
 
-      {/* Optional Address Collapsible */}
-      <button
-        type="button"
-        onClick={() => setShowAddress((s) => !s)}
-        aria-expanded={showAddress}
-        className="text-sm font-medium text-[#542452] hover:underline"
-      >
-        {showAddress ? "Remove address" : "+ Add address (optional)"}
-      </button>
-
-      {showAddress && (
-        <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50/50 p-3.5 sm:grid-cols-2">
-          <div className="sm:col-span-2">
-            <FormField
-              label="Address line 1"
-              value={address.addressLine1}
-              onChange={setA("addressLine1")}
-            />
-          </div>
-          <div className="sm:col-span-2">
-            <FormField
-              label="Address line 2"
-              value={address.addressLine2}
-              onChange={setA("addressLine2")}
-            />
-          </div>
-          <FormField label="Street" value={address.street} onChange={setA("street")} />
-          <FormField label="City" value={address.city} onChange={setA("city")} />
-          <FormField label="State" value={address.state} onChange={setA("state")} />
-          <FormField label="Country" value={address.country} onChange={setA("country")} />
-          <FormField
-            label="Postal code"
-            value={address.postalCode}
-            onChange={setA("postalCode")}
+      {/* Optional address */}
+      <div className="rounded-2xl border border-dashed border-slate-300 bg-white">
+        <button
+          type="button"
+          onClick={() => setShowAddress((s) => !s)}
+          aria-expanded={showAddress}
+          className="flex w-full items-center justify-between gap-3 rounded-2xl px-4 py-3 text-left text-sm font-medium text-[#542452] transition hover:bg-[#FAF5F9] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#542452]/15"
+        >
+          <span className="flex items-center gap-2">
+            <MapPin className="size-4" />
+            {showAddress ? "Remove address" : "Add delivery address"}
+            <span className="text-xs font-normal text-slate-400">(optional)</span>
+          </span>
+          <ChevronDown
+            className={`size-4 shrink-0 transition-transform ${showAddress ? "rotate-180" : ""}`}
           />
-        </div>
-      )}
+        </button>
+
+        {showAddress && (
+          <div className="grid gap-3 border-t border-slate-200 p-4 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <FormField
+                label="Address line 1"
+                value={address.addressLine1}
+                onChange={setA("addressLine1")}
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <FormField
+                label="Address line 2"
+                value={address.addressLine2}
+                onChange={setA("addressLine2")}
+              />
+            </div>
+            <FormField label="Street" value={address.street} onChange={setA("street")} />
+            <FormField label="City" value={address.city} onChange={setA("city")} />
+            <FormField label="State" value={address.state} onChange={setA("state")} />
+            <FormField label="Country" value={address.country} onChange={setA("country")} />
+            <FormField
+              label="Postal code"
+              value={address.postalCode}
+              onChange={setA("postalCode")}
+            />
+          </div>
+        )}
+      </div>
 
       {apiError && (
-        <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+        <p
+          role="alert"
+          className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700"
+        >
+          <AlertCircle className="mt-0.5 size-4 shrink-0" />
           {apiError}
         </p>
       )}
 
-      {/* ----------------- CREATE ACCOUNT BUTTON ----------------- */}
-      <div className="pt-2">
+      {/* Submit */}
+      <div className="space-y-2.5 pt-1">
         <button
           type="submit"
           disabled={!canCreateAccount}
-          className="w-full rounded-lg bg-[#542452] py-2.5 text-sm font-medium text-white transition hover:bg-[#6e2d6b] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
+          className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#542452] text-sm font-semibold text-white shadow-md shadow-[#542452]/20 transition hover:bg-[#6e2d6b] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#542452]/25 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 disabled:shadow-none"
         >
           {busy ? (
-            <span className="flex items-center justify-center gap-2">
+            <>
               <Loader2 className="size-4 animate-spin" /> Creating account…
-            </span>
+            </>
           ) : (
-            "Create account"
+            <>
+              <Lock className="size-4" /> Create account
+            </>
           )}
         </button>
 
-        {!canCreateAccount && (
-          <p className="mt-2 text-center text-xs text-slate-500">
-            {!emailVerified
-              ? "⚠ Step 1: Verify your email above to continue"
-              : !phoneVerified
-              ? "⚠ Step 2: Verify your phone number above to enable account creation"
-              : !form.firstName.trim()
-              ? "Enter your full name"
-              : form.password.length < 8
-              ? "Password must be at least 8 characters"
-              : ""}
-          </p>
+        {!canCreateAccount && helperText && (
+          <p className="text-center text-xs text-slate-500">{helperText}</p>
         )}
       </div>
 
       <p className="text-center text-sm text-slate-500">
         Already have an account?{" "}
-        <Link href="/login" className="font-medium text-[#542452] hover:underline">
+        <Link href="/login" className="font-semibold text-[#542452] hover:underline">
           Log in
         </Link>
       </p>
