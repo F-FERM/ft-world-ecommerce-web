@@ -10,7 +10,10 @@ async function post<T = unknown>(path: string, body: unknown): Promise<T> {
 
   const data = await res.json().catch(() => null);
 
-  if (!res.ok) {
+  if (!res.ok || data?.success === false) {
+    if (res.status === 404) {
+      throw new Error("404 Not Found");
+    }
     const msg = data?.message;
     throw new Error(
       Array.isArray(msg) ? msg.join(", ") : msg || "Something went wrong. Try again."
@@ -36,13 +39,47 @@ export type RegisterPayload = {
   };
 };
 
+export type LoginPayload = {
+  email: string;
+  phone: string;
+  password: string;
+};
+
 export const authApi = {
   register: (p: RegisterPayload) => post("/auth/register", p),
-  sendRegisterOtp: (identifier: string) => post("/auth/send-register-otp", { identifier }),
-  verifyRegisterOtp: (identifier: string, otp: string) =>
-    post("/auth/verify-register-otp", { identifier, otp }),
+  sendRegisterOtp: async (identifier: string) => {
+    const payload = { identifier };
+    try {
+      return await post("/auth/send-register-otp", payload);
+    } catch (err: any) {
+      if (err?.message?.includes("404")) {
+        return await post("/send-register-otp", payload);
+      }
+      throw err;
+    }
+  },
+  verifyRegisterOtp: async (identifier: string, otp: string) => {
+    const payload = { identifier, otp };
+    try {
+      return await post("/auth/verify-register-otp", payload);
+    } catch (err: any) {
+      if (err?.message?.includes("404")) {
+        return await post("/verify-register-otp", payload);
+      }
+      throw err;
+    }
+  },
 
-  login: (username: string, password: string) => post("/auth/login", { username, password }),
+  login: async (payload: LoginPayload) => {
+    try {
+      return await post("/auth/user/login", payload);
+    } catch (err: any) {
+      if (err?.message?.includes("404")) {
+        return await post("/user/login", payload);
+      }
+      throw err;
+    }
+  },
   sendLoginOtp: (identifier: string) => post("/auth/send-login-otp", { identifier }),
   verifyLoginOtp: (identifier: string, otp: string) =>
     post("/auth/verify-login-otp", { identifier, otp }),
