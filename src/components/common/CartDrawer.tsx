@@ -14,6 +14,7 @@ import {
   ChevronDown,
   ChevronUp,
   ClipboardList,
+  CreditCard,
   Edit2,
   MapPin,
   Package,
@@ -43,11 +44,16 @@ import {
   useUpdateAddress,
 } from "@/src/api/address";
 import { usePlaceOrder, type PaymentMethod } from "@/src/api/orders";
+import {
+  useWishlist,
+  useClearWishlist,
+  useRemoveFromWishlist,
+} from "@/src/api/wishlist";
 
 /* ---------------------------------- Types --------------------------------- */
 
 type Tab = "cart" | "recent";
-type Panel = "note" | "shipping" | "discount" | "order" | null;
+type Panel = "note" | "shipping" | "discount" | "payment" | null;
 type ShippingView = "list" | "form";
 
 export interface CartDrawerProps {
@@ -348,13 +354,10 @@ function ShippingPanel({
   onClose,
   selectedId,
   onSelect,
-  onContinue,
 }: {
   onClose: () => void;
   selectedId: string;
   onSelect: (id: string) => void;
-  /** Called when the customer confirms the selected address */
-  onContinue: () => void;
 }) {
   const [view, setView] = useState<ShippingView>("list");
   const [editing, setEditing] = useState<Address | null>(null);
@@ -539,7 +542,7 @@ function ShippingPanel({
             Add New Address
           </button>
 
-          <ApplyButton onClick={onContinue} disabled={!selectedId}>
+          <ApplyButton onClick={onClose} disabled={!selectedId}>
             Deliver to this address
           </ApplyButton>
         </div>
@@ -548,81 +551,63 @@ function ShippingPanel({
   );
 }
 
-/* -------------------- Order Confirm Panel -------------------- */
+/* -------------------- Payment Method Panel -------------------- */
 
-function OrderConfirmPanel({
-  lines,
-  note,
-  discountCode,
-  selectedAddressId,
+function PaymentPanel({
   onClose,
-  onOrderSuccess,
+  selectedMethod,
+  onSelect,
 }: {
-  lines: CartLine[];
-  note: string;
-  discountCode: string;
-  selectedAddressId: string;
   onClose: () => void;
-  onOrderSuccess: () => void;
+  selectedMethod: PaymentMethod;
+  onSelect: (m: PaymentMethod) => void;
 }) {
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("COD");
-  const placeOrder = usePlaceOrder({ onSuccess: onOrderSuccess });
-
-  const handlePlace = () => {
-    if (!selectedAddressId) {
-      alert("Please select a shipping address first.");
-      return;
-    }
-    placeOrder.mutate({
-      addressId: selectedAddressId,
-      paymentMethod,
-      productIds: lines.map((l) => l.id),
-      couponCode: discountCode || undefined,
-      orderNote: note || undefined,
-    });
-  };
+  const [method, setMethod] = useState<PaymentMethod>(selectedMethod);
 
   return (
-    <ActionPanel title="Place Order" onClose={onClose}>
-      {/* Payment method */}
-      <div className="space-y-2">
-        <p className="text-[13px] font-medium text-black">Payment Method</p>
-        <div className="flex gap-3">
-          {(["COD", "ONLINE"] as PaymentMethod[]).map((m) => (
-            <label
-              key={m}
-              className={cn(
-                "flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-[8px] border py-2.5 text-[13px] font-medium transition-colors",
-                paymentMethod === m
-                  ? "border-[#55244F] bg-[#f8f0f8] text-[#55244F]"
-                  : "border-[#D5D5D5] bg-white text-[#525252] hover:border-[#55244F]/50"
-              )}
-            >
-              <input
-                type="radio"
-                name="payment"
-                value={m}
-                checked={paymentMethod === m}
-                onChange={() => setPaymentMethod(m)}
-                className="sr-only"
+    <ActionPanel title="Payment Method" onClose={onClose}>
+      <div className="space-y-2 py-2">
+        {(["COD", "ONLINE"] as PaymentMethod[]).map((m) => (
+          <label
+            key={m}
+            className={cn(
+              "flex cursor-pointer items-center justify-between rounded-[8px] border p-3.5 text-[14px] font-medium transition-colors",
+              method === m
+                ? "border-[#55244F] bg-[#f8f0f8] text-[#55244F]"
+                : "border-[#D5D5D5] bg-white text-[#525252] hover:border-[#55244F]/50"
+            )}
+          >
+            <div className="flex items-center gap-3">
+              <span
+                className={cn(
+                  "size-4 rounded-full border-2 transition-colors",
+                  method === m
+                    ? "border-[#55244F] bg-[#55244F]"
+                    : "border-[#D5D5D5] bg-white"
+                )}
               />
-              {m === "COD" ? "Cash on Delivery" : "Online Payment"}
-            </label>
-          ))}
-        </div>
+              <span>
+                {m === "COD" ? "Cash on Delivery (COD)" : "Online Payment"}
+              </span>
+            </div>
+            <input
+              type="radio"
+              name="panel-payment-method"
+              value={m}
+              checked={method === m}
+              onChange={() => setMethod(m)}
+              className="sr-only"
+            />
+          </label>
+        ))}
       </div>
-
-      {!selectedAddressId && (
-        <p className="text-[12px] text-[#FF4D4D]">
-          ⚠ Please select a shipping address.
-        </p>
-      )}
-
       <ApplyButton
-        onClick={handlePlace}
-        disabled={placeOrder.isPending || !selectedAddressId}
+        onClick={() => {
+          onSelect(method);
+          onClose();
+        }}
       >
-        {placeOrder.isPending ? "Placing Order…" : "Confirm Order"}
+        Save Payment Method
       </ApplyButton>
     </ActionPanel>
   );
@@ -633,7 +618,7 @@ function OrderConfirmPanel({
 const CartDrawer = ({
   open,
   onClose,
-  recentlyViewed = EMPTY_RECENT,
+  recentlyViewed: recentlyViewedProp = EMPTY_RECENT,
   freeShippingThreshold = 135,
   onAddRecent,
   onApplyNote,
@@ -650,6 +635,63 @@ const CartDrawer = ({
   const [code, setCode] = useState("");
   const [confirmClear, setConfirmClear] = useState(false);
   const [selectedAddressId, setSelectedAddressId] = useState<string>("");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("COD");
+  const [mounted, setMounted] = useState(false);
+  // Recently viewed: manage locally so we can remove individual items
+  const [recentlyViewed, setRecentlyViewed] = useState<CartProduct[]>(
+    recentlyViewedProp
+  );
+  // Sync if prop changes
+  useEffect(() => {
+    setRecentlyViewed(recentlyViewedProp);
+  }, [recentlyViewedProp]);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const loggedIn = mounted && isCustomerLoggedIn();
+  const { data: wishlistProducts = [], isLoading: isWishlistLoading } =
+    useWishlist({ enabled: open && loggedIn });
+  const clearWishlist = useClearWishlist();
+  const removeFromWishlist = useRemoveFromWishlist();
+
+  const wishlistAsCartProducts: CartProduct[] = useMemo(() => {
+    return wishlistProducts.map((p: any) => ({
+      id: p._id || p.id,
+      title: p.name || p.title || "Product",
+      compatibleWith: p.compatibleWith || p.category || p.slug || "",
+      compatibleModels: p.compatibleModels || "",
+      price: Number(p.price ?? p.originalPrice ?? 0),
+      compareAtPrice:
+        p.compareAtPrice ??
+        (p.price && p.originalPrice && p.originalPrice > p.price
+          ? p.originalPrice
+          : undefined),
+      image:
+        (Array.isArray(p.images) && p.images[0]) ||
+        p.image ||
+        "/placeholder.png",
+    }));
+  }, [wishlistProducts]);
+
+  const displayRecentList = loggedIn ? wishlistAsCartProducts : recentlyViewed;
+
+  const { data: addresses = [] } = useAddresses({ enabled: open });
+  const selectedAddress = addresses.find((a) => a._id === selectedAddressId);
+
+  useEffect(() => {
+    if (!selectedAddressId && addresses.length > 0) {
+      const def = addresses.find((a) => a.isDefault) ?? addresses[0];
+      setSelectedAddressId(def._id);
+    }
+  }, [addresses, selectedAddressId]);
+
+  const placeOrder = usePlaceOrder({
+    onSuccess: () => {
+      onClose();
+    },
+  });
 
   /* ------------------------------ Cart data ------------------------------ */
 
@@ -680,6 +722,22 @@ const CartDrawer = ({
     });
   };
 
+  /* ---- Recently viewed / Wishlist: remove helpers ---- */
+  const handleRemoveRecent = (id: string) => {
+    if (loggedIn) {
+      removeFromWishlist.mutate(id);
+    } else {
+      setRecentlyViewed((prev) => prev.filter((p) => p.id !== id));
+    }
+  };
+  const handleClearAllRecent = () => {
+    if (loggedIn) {
+      clearWishlist.mutate();
+    } else {
+      setRecentlyViewed([]);
+    }
+  };
+
   const handleAddRecent = (product: CartProduct) => {
     addToCart.mutate(
       { productId: product.id, quantity: 1, name: product.title },
@@ -704,7 +762,20 @@ const CartDrawer = ({
       router.push("/login?redirect=cart");
       return;
     }
-    setPanel("shipping");
+
+    if (!selectedAddressId) {
+      alert("Please select a shipping address first.");
+      setPanel("shipping");
+      return;
+    }
+
+    placeOrder.mutate({
+      addressId: selectedAddressId,
+      paymentMethod,
+      productIds: lines.map((l) => l.id),
+      couponCode: code.trim() || undefined,
+      orderNote: note.trim() || undefined,
+    });
   };
 
   /* ------------------------------ Drawer UX ------------------------------ */
@@ -892,6 +963,8 @@ const CartDrawer = ({
     );
   };
 
+  if (!mounted) return null;
+
   return (
     <div
       data-slot="cart-drawer"
@@ -1008,38 +1081,79 @@ const CartDrawer = ({
 
               {cartBody()}
             </>
-          ) : recentlyViewed.length === 0 ? (
-            <p className="mt-10 text-center text-[14px] text-[#676767] 2xl:text-[16px]">
-              No recently viewed products yet.
-            </p>
+          ) : isWishlistLoading && loggedIn ? (
+            <div className="mt-10 flex justify-center">
+              <div className="h-6 w-6 animate-spin rounded-full border-2 border-[#55244F] border-t-transparent" />
+            </div>
+          ) : displayRecentList.length === 0 ? (
+            <div className="mt-10 flex flex-col items-center gap-3 text-center">
+              <p className="text-[14px] text-[#676767] 2xl:text-[16px]">
+                {loggedIn
+                  ? "No products in your wishlist yet."
+                  : "No recently viewed products yet."}
+              </p>
+            </div>
           ) : (
-            <ul className="space-y-3">
-              {recentlyViewed.map((product) => (
-                <li
-                  key={product.id}
-                  className="flex items-center gap-3 rounded-[8px] border border-[#E5E5E5] bg-white p-2.5 2xl:gap-4 2xl:p-3"
+            <>
+              {/* Clear all */}
+              <div className="mb-3 flex items-center justify-between">
+                <p className="text-[13px] font-normal text-[#676767]">
+                  {displayRecentList.length}{" "}
+                  {displayRecentList.length === 1 ? "product" : "products"}
+                </p>
+                <button
+                  type="button"
+                  onClick={handleClearAllRecent}
+                  disabled={clearWishlist.isPending}
+                  className="rounded-sm text-[12px] font-normal text-[#FF4D4D] underline underline-offset-2 hover:opacity-80 focus-visible:outline-none disabled:opacity-50 2xl:text-[13px]"
                 >
-                  <ProductImage src={product.image} alt={product.title} />
-                  <ProductInfo product={product} />
-                  <button
-                    type="button"
-                    onClick={() => handleAddRecent(product)}
-                    disabled={addToCart.isPending}
-                    aria-label={`Add ${product.title} to cart`}
-                    className={cn(
-                      BRAND,
-                      "flex h-[28px] shrink-0 items-center gap-1 rounded-full px-3 text-[11px] font-medium uppercase leading-none text-white transition-colors",
-                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#55244F]/50 focus-visible:ring-offset-2",
-                      "disabled:cursor-not-allowed disabled:opacity-60",
-                      "2xl:h-[32px] 2xl:px-4 2xl:text-[12px]"
-                    )}
+                  Clear all
+                </button>
+              </div>
+
+              <ul className="space-y-3">
+                {displayRecentList.map((product) => (
+                  <li
+                    key={product.id}
+                    className="flex items-center gap-3 rounded-[8px] border border-[#E5E5E5] bg-white p-2.5 2xl:gap-4 2xl:p-3"
                   >
-                    Add
-                    <Plus aria-hidden="true" className="size-[12px]" />
-                  </button>
-                </li>
-              ))}
-            </ul>
+                    <ProductImage src={product.image} alt={product.title} />
+                    <ProductInfo product={product} />
+
+                    <div className="ml-auto flex shrink-0 flex-col items-end gap-1.5">
+                      {/* Add to cart */}
+                      <button
+                        type="button"
+                        onClick={() => handleAddRecent(product)}
+                        disabled={addToCart.isPending}
+                        aria-label={`Add ${product.title} to cart`}
+                        className={cn(
+                          BRAND,
+                          "flex h-[28px] items-center gap-1 rounded-full px-3 text-[11px] font-medium uppercase leading-none text-white transition-colors",
+                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#55244F]/50 focus-visible:ring-offset-2",
+                          "disabled:cursor-not-allowed disabled:opacity-60",
+                          "2xl:h-[32px] 2xl:px-4 2xl:text-[12px]"
+                        )}
+                      >
+                        Add
+                        <Plus aria-hidden="true" className="size-[12px]" />
+                      </button>
+
+                      {/* Remove this item */}
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveRecent(product.id)}
+                        disabled={removeFromWishlist.isPending}
+                        aria-label={`Remove ${product.title}`}
+                        className="text-[11px] font-normal text-[#FF4D4D] underline underline-offset-1 hover:opacity-80 focus-visible:outline-none disabled:opacity-50 2xl:text-[12px]"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
         </div>
 
@@ -1048,7 +1162,7 @@ const CartDrawer = ({
           <>
             {panel === null && (
               <>
-                {/* Order note / Shipping / Discount */}
+                {/* Order note / Shipping / Payment / Discount */}
                 <div className="flex shrink-0 border-t border-[#D5D5D5] bg-white">
                   {actionButton("note", "Order Note", <ClipboardList aria-hidden="true" />)}
 
@@ -1081,6 +1195,22 @@ const CartDrawer = ({
                     <span className="truncate pb-[2px] leading-[1.3]">Shipping</span>
                   </button>
 
+                  {/* Payment Method */}
+                  <button
+                    type="button"
+                    onClick={() => setPanel("payment")}
+                    className={cn(
+                      "flex min-w-0 flex-1 items-center justify-center gap-2 px-2 py-4 2xl:py-5",
+                      "text-[13px] font-normal capitalize leading-none text-black sm:text-[15px] 2xl:text-[18px]",
+                      "transition-colors hover:bg-[#F6F6F6] focus-visible:bg-[#F6F6F6] focus-visible:outline-none",
+                      "[&_svg]:size-[16px] [&_svg]:shrink-0 sm:[&_svg]:size-[18px] 2xl:[&_svg]:size-[20px]",
+                      "[&:not(:first-child)]:border-l [&:not(:first-child)]:border-[#D5D5D5]"
+                    )}
+                  >
+                    <CreditCard aria-hidden="true" />
+                    <span className="truncate pb-[2px] leading-[1.3]">Payment</span>
+                  </button>
+
                   {actionButton("discount", "Discount", <BadgePercent aria-hidden="true" />)}
                 </div>
 
@@ -1091,17 +1221,73 @@ const CartDrawer = ({
                     SAFE_BOTTOM
                   )}
                 >
-                  {/* Selected address badge */}
-                  {selectedAddressId && isCustomerLoggedIn() && (
-                    <button
-                      type="button"
-                      onClick={() => setPanel("shipping")}
-                      className="mb-3 flex w-full items-center gap-2 rounded-[8px] border border-[#55244F]/30 bg-white px-3 py-2 text-left text-[12px] text-[#55244F] transition-colors hover:bg-[#f8f0f8]"
-                    >
-                      <MapPin aria-hidden="true" className="size-[13px] shrink-0" />
-                      <span className="truncate">Delivering to selected address</span>
-                      <Edit2 aria-hidden="true" className="ml-auto size-[12px] shrink-0" />
-                    </button>
+                  {/* Separate Shipping Address Card */}
+                  {isCustomerLoggedIn() && (
+                    <div className="mb-2.5 rounded-[8px] border border-[#D5D5D5] bg-white p-3 text-[12px] sm:text-[13px]">
+                      <div className="flex items-center justify-between">
+                        <span className="flex items-center gap-1.5 font-semibold text-black">
+                          <MapPin aria-hidden="true" className="size-4 text-[#55244F]" />
+                          Shipping Address
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setPanel("shipping")}
+                          className="font-medium text-[#55244F] underline hover:text-[#6B2D63]"
+                        >
+                          {selectedAddress ? "Change" : "Select"}
+                        </button>
+                      </div>
+                      {selectedAddress ? (
+                        <p className="mt-1 truncate text-[#525252]">
+                          <strong className="text-black">{selectedAddress.fullName}</strong> ({selectedAddress.phone}) —{" "}
+                          {selectedAddress.addressLine1}, {selectedAddress.city}
+                        </p>
+                      ) : (
+                        <p className="mt-1 text-[#FF4D4D]">⚠ No address selected. Click &quot;Select&quot; above.</p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Separate Payment Method Card */}
+                  {isCustomerLoggedIn() && (
+                    <div className="mb-3 rounded-[8px] border border-[#D5D5D5] bg-white p-3 text-[12px] sm:text-[13px]">
+                      <div className="mb-1.5 flex items-center justify-between">
+                        <span className="flex items-center gap-1.5 font-semibold text-black">
+                          <CreditCard aria-hidden="true" className="size-4 text-[#55244F]" />
+                          Payment Method
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setPanel("payment")}
+                          className="font-medium text-[#55244F] underline hover:text-[#6B2D63]"
+                        >
+                          Change
+                        </button>
+                      </div>
+                      <div className="flex gap-2">
+                        {(["COD", "ONLINE"] as PaymentMethod[]).map((m) => (
+                          <label
+                            key={m}
+                            className={cn(
+                              "flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-[6px] border py-1.5 text-[11px] font-medium transition-colors sm:text-[12px]",
+                              paymentMethod === m
+                                ? "border-[#55244F] bg-[#f8f0f8] text-[#55244F]"
+                                : "border-[#D5D5D5] bg-white text-[#525252] hover:border-[#55244F]/50"
+                            )}
+                          >
+                            <input
+                              type="radio"
+                              name="cart-payment-method"
+                              value={m}
+                              checked={paymentMethod === m}
+                              onChange={() => setPaymentMethod(m)}
+                              className="sr-only"
+                            />
+                            {m === "COD" ? "Cash on Delivery" : "Online Payment"}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
                   )}
 
                   <div className="flex items-end justify-between gap-4">
@@ -1132,7 +1318,6 @@ const CartDrawer = ({
                           onClose();
                           router.push("/login?redirect=cart");
                         }}
-                        // disabled={isLoading || isError || lines.length === 0}
                         className={cn(
                           BRAND,
                           "h-[48px] w-full rounded-[8px] text-[16px] font-semibold uppercase text-white transition-colors",
@@ -1151,7 +1336,7 @@ const CartDrawer = ({
                   <button
                     type="button"
                     onClick={handleBuyNow}
-                    disabled={isLoading || isError || lines.length === 0}
+                    disabled={isLoading || isError || lines.length === 0 || placeOrder.isPending}
                     className={cn(
                       BRAND,
                       "mt-4 h-[48px] w-full rounded-[8px] text-[16px] font-semibold uppercase text-white transition-colors",
@@ -1160,7 +1345,7 @@ const CartDrawer = ({
                       "sm:h-[52px] 2xl:mt-5 2xl:h-[60px] 2xl:text-[22px]"
                     )}
                   >
-                    Buy now
+                    {placeOrder.isPending ? "Placing Order…" : "Buy now"}
                   </button>
                   )}
                 </div>
@@ -1190,7 +1375,14 @@ const CartDrawer = ({
                 onClose={() => setPanel(null)}
                 selectedId={selectedAddressId}
                 onSelect={setSelectedAddressId}
-                onContinue={() => setPanel("order")}
+              />
+            )}
+
+            {panel === "payment" && (
+              <PaymentPanel
+                onClose={() => setPanel(null)}
+                selectedMethod={paymentMethod}
+                onSelect={setPaymentMethod}
               />
             )}
 
@@ -1211,20 +1403,6 @@ const CartDrawer = ({
                   }}
                 />
               </ActionPanel>
-            )}
-
-            {panel === "order" && (
-              <OrderConfirmPanel
-                lines={lines}
-                note={note}
-                discountCode={code}
-                selectedAddressId={selectedAddressId}
-                onClose={() => setPanel(null)}
-                onOrderSuccess={() => {
-                  setPanel(null);
-                  onClose();
-                }}
-              />
             )}
           </>
         )}

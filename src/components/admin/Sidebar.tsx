@@ -34,7 +34,10 @@ const data = {
         { title: "Banner", url: "/admin/dashboard/home/banner" },
           { title: "Categories", url: "/admin/dashboard/home/categories" },
      { title: "Products", url: "/admin/dashboard/home/product" }, 
-     { title: "Subscribers", url: "/admin/dashboard/home/subscribers" },     
+     { title: "Subscribers", url: "/admin/dashboard/home/subscribers" },   
+  { title: "Orders", url: "/admin/dashboard/home/orders" },   
+    { title: "Privacy Policy", url: "/admin/dashboard/home/privacy-policy" },   
+
     
         
 

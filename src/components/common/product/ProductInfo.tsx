@@ -1,19 +1,23 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { ArrowDown, ChevronLeft, ChevronRight } from "lucide-react";
 import Image from "next/image";
 import payment from "../../../../public/icons/payment.png";
 import { ProductDetail } from "@/src/api/products";
 import { cn } from "@/src/lib/utils";
-import { useAddToCart } from "@/src/api/useCart";
+import { isCustomerLoggedIn, useAddToCart } from "@/src/api/useCart";
+import ProductCheckoutDrawer from "./ProductCheckoutDrawer";
 
 const fmt = (v: number) => `AED. ${v.toFixed(2)}`;
 const primaryBtn =
   "h-[60px] rounded-[10px] bg-[#542452] px-[30px] py-[10px] text-[18px] font-semibold uppercase leading-[100%] text-white transition-colors hover:bg-[#6E2D6B] disabled:cursor-not-allowed disabled:opacity-50 sm:text-[20px] 2xl:text-[24px]";
 
 export default function ProductInfo({ product }: { product: ProductDetail }) {
+  const router = useRouter();
   const [qty, setQty] = useState(1);
+  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const { fullTitle, features, price, oldPrice, discount, inStock, stock } = product;
   const total = Math.round(price * qty * 100) / 100;
 
@@ -35,21 +39,14 @@ export default function ProductInfo({ product }: { product: ProductDetail }) {
   };
 
   const handleBuyNow = () => {
-    if (adding) return;
-    addToCart(
-      {
-        productId: product.id,
-        quantity: qty,
-        name: product.fullTitle,
-        price: product.price,
-        compareAtPrice: product.oldPrice,
-        compatibleWith: product.compatibleFor,
-        compatibleModels: product.compatibleModels,
-        image: product.gallery?.[0],
-        stock: product.stock,
-      },
-      { onSuccess: () => window.location.href = "/cart" }
-    );
+    if (!isCustomerLoggedIn()) {
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem("redirect_after_login", window.location.pathname);
+      }
+      router.push("/login?redirect=product");
+      return;
+    }
+    setIsCheckoutOpen(true);
   };
 
   return (
@@ -158,6 +155,13 @@ export default function ProductInfo({ product }: { product: ProductDetail }) {
           className="h-[28px] w-auto sm:h-[34px]"
         />
       </button>
+
+      <ProductCheckoutDrawer
+        open={isCheckoutOpen}
+        onClose={() => setIsCheckoutOpen(false)}
+        product={product}
+        initialQuantity={qty}
+      />
     </div>
   );
 }

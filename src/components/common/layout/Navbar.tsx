@@ -244,21 +244,24 @@ interface NavbarProps {
 }
 
 const Navbar = ({ onSearch, className }: NavbarProps) => {
+  const [mounted, setMounted] = useState(false);
   const [open, setOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
   // which parent is expanded in the mobile panel
   const [expanded, setExpanded] = useState<string | null>(null);
 
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   // cart item count: API count for logged-in customer, localStorage count for guest
-  const loggedIn = isCustomerLoggedIn();
-  const { data: cartLines = [] } = useCart({ enabled: loggedIn });
+  const { data: cartLines = [] } = useCart({ enabled: mounted });
   const cartCount = useMemo(
     () =>
-      loggedIn
+      mounted
         ? cartLines.reduce((sum, l) => sum + l.quantity, 0)
-        : guestCart.count(),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [loggedIn, cartLines]
+        : 0,
+    [mounted, cartLines]
   );
 
   const closeMenu = useCallback(() => {
