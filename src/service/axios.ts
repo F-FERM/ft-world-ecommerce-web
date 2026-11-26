@@ -22,8 +22,8 @@ const axiosInstance = axios.create({
   headers: {
     "Content-Type": "application/json",
   },
-  withCredentials: true, // This is important for sending/receiving cookies
-  timeout: 10000, // 10 seconds timeout
+  withCredentials: true, 
+  timeout: 10000, 
 });
 
 // Request interceptor
@@ -68,7 +68,8 @@ axiosInstance.interceptors.response.use(
       const refreshToken = LocalStorage.getItem("customer_refresh_token");
 
       if (!refreshToken) {
-        LocalStorage.clear();
+        LocalStorage.removeItem(TOKEN_KEYS.customer);
+        LocalStorage.removeItem("customer_refresh_token");
         return Promise.reject(error);
       }
 
@@ -93,7 +94,8 @@ axiosInstance.interceptors.response.use(
       } catch (refreshError) {
         processQueue(refreshError, null);
         isRefreshing = false;
-        LocalStorage.clear();
+        LocalStorage.removeItem(TOKEN_KEYS.customer);
+        LocalStorage.removeItem("customer_refresh_token");
         window.location.href = "/login";
         return Promise.reject(refreshError);
       }
