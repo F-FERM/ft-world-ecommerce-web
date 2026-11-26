@@ -238,8 +238,11 @@ export const useCart = (options?: { enabled?: boolean }) => {
         quantity: item.quantity,
         stock: item.stock,
       })) as CartLine[],
-    enabled: !loggedIn && (options?.enabled ?? true),
-    staleTime: 0,
+    enabled: !loggedIn,
+    gcTime: Infinity,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
   });
 
   return loggedIn ? apiCart : guestCartQuery;
@@ -302,7 +305,18 @@ export const useAddToCart = () => {
       if (loggedIn) {
         queryClient.invalidateQueries({ queryKey: CART_KEY });
       } else {
-        queryClient.invalidateQueries({ queryKey: ["guest-cart"] });
+        const updated = guestCart.get().map((item) => ({
+          id: item.productId,
+          title: item.name ?? item.productId,
+          compatibleWith: item.compatibleWith ?? "",
+          compatibleModels: item.compatibleModels ?? "",
+          price: item.price ?? 0,
+          compareAtPrice: item.compareAtPrice,
+          image: item.image ?? "/products/placeholder.png",
+          quantity: item.quantity,
+          stock: item.stock,
+        })) as CartLine[];
+        queryClient.setQueryData(["guest-cart"], updated);
       }
     },
     onError: (error: unknown) => {
@@ -324,15 +338,27 @@ export const useUpdateCartItem = () => {
     mutationKey: CART_KEY,
     mutationFn: async (data) => {
       if (!loggedIn) {
-        // Guest: update localStorage
-        return guestCart.update(data.productId, data.quantity);
+        // localStorage + cache already updated in onMutate; nothing more to do.
+        return;
       }
       return await UpdateCartApi(data);
     },
     // Optimistic update for logged-in; instant for guest (localStorage is sync)
     onMutate: async ({ productId, quantity }) => {
       if (!loggedIn) {
-        queryClient.invalidateQueries({ queryKey: ["guest-cart"] });
+        guestCart.update(productId, quantity);
+        const updated = guestCart.get().map((item) => ({
+          id: item.productId,
+          title: item.name ?? item.productId,
+          compatibleWith: item.compatibleWith ?? "",
+          compatibleModels: item.compatibleModels ?? "",
+          price: item.price ?? 0,
+          compareAtPrice: item.compareAtPrice,
+          image: item.image ?? "/products/placeholder.png",
+          quantity: item.quantity,
+          stock: item.stock,
+        })) as CartLine[];
+        queryClient.setQueryData(["guest-cart"], updated);
         return {};
       }
       await queryClient.cancelQueries({ queryKey: CART_KEY });
@@ -352,7 +378,6 @@ export const useUpdateCartItem = () => {
     },
     onSettled: () => {
       if (loggedIn) settleCart(queryClient);
-      else queryClient.invalidateQueries({ queryKey: ["guest-cart"] });
     },
   });
 };
